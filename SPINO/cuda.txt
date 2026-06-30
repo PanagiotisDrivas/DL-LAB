@@ -1,0 +1,6 @@
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --index-url https://download.pytorch.org/whl/cu117
+
+pip install mmcv-full==1.7.2 -f https://download.openmmlab.com/mmcv/dist/cu117/torch1.13/index.html
+
+
+python -m panoptic_segmentation_model.scripts.evaluate_labels --dataset_name cityscapes --gpu_id 0 --gt_path panoptic_label_generator/cityscapes --pred_path panoptic_label_generator/results/cityscapes

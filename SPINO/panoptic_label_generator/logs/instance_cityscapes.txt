@@ -1,0 +1,4 @@
+usage: instance_clustering.py [-h] [-c CONFIG] [--print_config [=flags]]
+                              {fit,validate,test,predict,tune} ...
+instance_clustering.py: error: Parser key "model.boundary_model": Problem with given class_path "boundary_fine_tuning.BoundaryFineTuner":
+  - Configuration check failed :: Key "dinov3" is required but not included in config object or its value is None.
