@@ -56,6 +56,8 @@ class BoundaryFineTuner(FineTuner):
                  test_output_size: Optional[Tuple[int, int]] = None,
                  test_multi_scales: Optional[List[int]] = None,
                  test_plot: bool = False):
+        if dinov3:
+            upsample_factor=16.0
         super().__init__(dinov2_vit_model=dinov2_vit_model, dinov3_vit_model=dinov3_vit_model, dinov3=dinov3, debug=debug, blocks=None,
                          upsample_factor=upsample_factor)
         assert mode in ['affinity', 'direct']

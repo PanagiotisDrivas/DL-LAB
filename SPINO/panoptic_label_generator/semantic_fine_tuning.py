@@ -65,12 +65,16 @@ class SemanticFineTuner(FineTuner):
                  test_output_size: Optional[Tuple[int, int]] = None,
                  test_multi_scales: Optional[List[int]] = None,
                  test_plot: bool = False, test_save_dir: Optional[str] = None,):
+        if dinov3:
+            upsample_factor=16.0
         super().__init__(dinov2_vit_model=dinov2_vit_model,dinov3_vit_model=dinov3_vit_model, dinov3=dinov3, debug=debug, blocks=blocks,
                          upsample_factor=upsample_factor)
         self.num_classes = num_classes
         self.train_output_size = train_output_size
         self.ignore_index = ignore_index
         self.top_k_percent_pixels = top_k_percent_pixels
+        if dinov3:
+            self.top_k_percent_pixels = 1.0
         self.test_output_size = test_output_size
         self.test_multi_scales = test_multi_scales
         self.test_plot = test_plot
@@ -131,6 +135,7 @@ class SemanticFineTuner(FineTuner):
     def training_step(self, train_batch: Dict[str, Any], batch_idx: int) -> Dict[str, Any]:
         rgb = train_batch['rgb']
         sem = train_batch['semantic'].long()
+
         if self.debug:
             img_sem = sem[0].permute(0, 1).cpu().numpy()  # HWC
             img_sem = (img_sem * 255).clip(0, 255).astype(np.uint8)
@@ -183,7 +188,6 @@ class SemanticFineTuner(FineTuner):
             sem = TF.resize(sem, self.train_output_size, interpolation=InterpolationMode.NEAREST)
             pred = self(rgb)
             loss = F.cross_entropy(pred, sem, ignore_index=self.ignore_index, reduction='none')
-
             if self.top_k_percent_pixels < 1.0:
                 loss = loss.contiguous().view(-1)
                 # Hard pixel mining
