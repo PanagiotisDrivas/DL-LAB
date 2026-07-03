@@ -1,3 +1,9 @@
+# --- PUT THIS AT THE VERY TOP OF THE FILE ---
+import torch.optim.lr_scheduler
+if hasattr(torch.optim.lr_scheduler, "LRScheduler"):
+    # Fix for PyTorch 2.0+ compatibility with older PyTorch Lightning CLI
+    torch.optim.lr_scheduler._LRScheduler = torch.optim.lr_scheduler.LRScheduler
+# --------------------------------------------
 import warnings
 from typing import Any, Dict, List, Optional, Tuple
 

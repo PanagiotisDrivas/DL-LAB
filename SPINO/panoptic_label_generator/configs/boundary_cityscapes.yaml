@@ -19,8 +19,8 @@ model:
   dinov3: 1
   debug: 0
   mode: "direct"
-  upsample_factor: 4.0
-  head: "linear"
+  upsample_factor: 16.0
+  head: "mlp"
   neighbor_radius: 1.5
   threshold_boundary: 0.98
   num_boundary_neighbors: 1

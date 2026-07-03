@@ -3,10 +3,8 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 import torch
 from models_v3.dino_v3 import (
-    dinov3_vitb16,
-    dinov3_vitg16,
-    dinov3_vitl16,
-    dinov3_vits16,
+    dinov3_vits16, dinov3_vitb16,
+    dinov3_vitl16, dinov3_vitg16
 )
 
 from models.dino_v2 import (
