@@ -14,7 +14,6 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
-# from fine_tuning_v3 import FineTuner
 from fine_tuning import FineTuner
 
 from PIL import Image
@@ -79,8 +78,6 @@ class SemanticFineTuner(FineTuner):
         self.train_output_size = train_output_size
         self.ignore_index = ignore_index
         self.top_k_percent_pixels = top_k_percent_pixels
-        if dinov3:
-            self.top_k_percent_pixels = 1.0
         self.test_output_size = test_output_size
         self.test_multi_scales = test_multi_scales
         self.test_plot = test_plot
@@ -142,40 +139,6 @@ class SemanticFineTuner(FineTuner):
         rgb = train_batch['rgb']
         sem = train_batch['semantic'].long()
 
-        if self.debug:
-            img_sem = sem[0].permute(0, 1).cpu().numpy()  # HWC
-            img_sem = (img_sem * 255).clip(0, 255).astype(np.uint8)
-
-            sem_save = train_batch["semantic"][0].cpu().numpy()  # (H, W)
-
-            # Get unique labels
-            labels = np.unique(sem_save)
-
-            # Create output image
-            colored = np.zeros((*sem_save.shape, 3), dtype=np.uint8)
-
-            # Random color for each label
-            rng = np.random.default_rng()  # or np.random.default_rng(42) for reproducible colors
-
-            for label in labels:
-                color = rng.integers(0, 256, size=3, dtype=np.uint8)
-                colored[sem_save == label] = color
-
-            
-            
-            img =  train_batch["rgb"][0].cpu()
-            mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-            img = img * std + mean
-            img = img.clamp(0, 1)
-            img = (img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
-            if self.dinov3_flag:
-                Image.fromarray(colored).save("test/dinov3/semantic_dinov3.png")
-                Image.fromarray(img).save("test/dinov3/aorg_dinov3.png")
-            else:
-                Image.fromarray(colored).save("test/dinov2/semantic.png")
-                Image.fromarray(img).save("test/dinov2/aorg.png")
-            # exit()
         if isinstance(self.head, KNeighborsClassifier):
             x = self(rgb)  # (B, feat_dim, H, W)
 

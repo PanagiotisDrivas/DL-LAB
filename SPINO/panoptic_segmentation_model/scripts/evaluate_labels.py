@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+import json
 
 def main():
     # Run from root of SPINO folder
@@ -139,6 +140,12 @@ def main():
     print(f"Semantic mIoU: {sem_miou_score}")
     print(f"Confusion matrix:\n{confusion_matrix}")
     print("******************")
+
+    with open("acc_score.json", "w") as f:
+        json.dump(acc_score, f, indent=2)
+
+    with open("sem_miou_score.json", "w") as f:
+        json.dump(sem_miou_score, f, indent=2)
 
     # Plot and save confusion matrix
     conf_mat_plt = plot_confusion_matrix(confusion_matrix, [], label_mode=dataset_cfg.label_mode)

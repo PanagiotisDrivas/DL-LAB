@@ -74,7 +74,7 @@ data:
 
 data_params:
   image_size_original: [1024, 2048]
-  image_size_input:  [640, 640]
+  image_size_input:  [1024, 2048]
   # image_size_input:  [630, 630]
 
   image_mean: [0.485, 0.456, 0.406]

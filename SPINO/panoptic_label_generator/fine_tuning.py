@@ -52,7 +52,8 @@ class FineTuner(pl.LightningModule):
 
         self.feat_dim = self.encoder.num_features
         self.patch_size = self.encoder.patch_size
-        self.encoder.mask_token = None  # can't use ddp_find_unused_parameters_false otherwise
+        if not self.dinov3_flag:
+            self.encoder.mask_token = None  # can't use ddp_find_unused_parameters_false otherwise
         for param in self.encoder.parameters():  # freeze backbone
             param.requires_grad = False
 
@@ -61,129 +62,51 @@ class FineTuner(pl.LightningModule):
         else:
             self.num_blocks = len(blocks)
 
-    def forward_encoder(self, img: torch.Tensor, feature_key: str = 'x'):
+    
+
+    def forward_encoder(self, img: torch.Tensor, feature_key: str = "x"):
+        """
+        Multi-block DINOv3 feature extractor (dense map output).
+        """
         if self.dinov3_flag:
-            n = 4
-        else:
-            n = 1
-        # n=1
-        # n=1 extracts only the final block
-        block_outputs = self.encoder.get_intermediate_layers(
-            img, 
-            n=n, 
-            reshape=True, 
-            return_class_token=False
-        )
-        
-        if n==1:    
-            x = block_outputs[0] # Exact shape: (B, feat_dim, H, W)
-        else:
-            x = torch.stack(block_outputs, dim=0).mean(dim=0)
+            feature_key = 'x_norm_patchtokens'
 
-        if self.upsample_factor is not None:
-            x = nn.functional.interpolate(x, scale_factor=self.upsample_factor, mode='bilinear', align_corners=False)  
+        img_h, img_w = img.shape[2:]
+        patches_h, patches_w = img_h // self.patch_size, img_w // self.patch_size
 
-        if self.debug:
-            import matplotlib.pyplot as plt
-            activation = x[0]              # (384, 448, 896)
-            heatmap = activation.mean(dim=0)
+        return_attention_features = any([(feature_key in x) for x in ['q', 'k', 'v', 'attn']])
 
-            # Normalize
-            heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-
-            plt.imshow(heatmap.cpu(), cmap="jet")
-            plt.axis("off")
+        with torch.no_grad():
             if self.dinov3_flag:
-                plt.savefig(f"test/dinov3/activation_mean_{n}_{str(img.shape[-1])}_dinov3.png", bbox_inches="tight", pad_inches=0)
-            else:
-                plt.savefig(f"test/dinov2/activation_mean_{n}_{str(img.shape[-1])}.png", bbox_inches="tight", pad_inches=0)
+                block_outputs = self.encoder.forward_features(img)
+            else:    
+                block_outputs = self.encoder.forward_features(
+                    img,
+                    return_attention_features=return_attention_features,
+                    return_blocks=self.blocks)
+                
+            if self.blocks is None:
+                block_outputs = [block_outputs]
+            outs = []
+            for x in block_outputs:
+                x = x[feature_key]
+                if feature_key == 'attn':
+                    return x  # (B, num_heads, Patches+1, Patches+1)
+                if feature_key in ['q', 'k', 'v']:
+                    # (B, Patches+1, num_heads, feat_dim // num_heads)
+                    x = x.permute((0, 2, 1, 3)).contiguous()
+                    x = x.reshape((x.shape[0], -1, self.feat_dim))  # (B, Patches+1, feat_dim)
+                outs.append(x)
+            x = torch.cat(outs, dim=2)  # (B, Patches+1, feat_dim * self.num_blocks)
 
-            plt.close()
-            exit()
-            
+            if not self.dinov3_flag:
+                x = x[:, 1:, :]  # (B, Patches, feat_dim)
+
+            x = x.permute((0, 2, 1)).contiguous()  # (B, feat_dim, H*W)
+            x = x.reshape((x.shape[0], self.feat_dim * self.num_blocks, patches_h,
+                           patches_w))  # (B, feat_dim, H, W)
+            if self.upsample_factor is not None:
+                x = nn.functional.interpolate(x, scale_factor=self.upsample_factor, mode='bilinear',
+                                              align_corners=False)  # (B, feat_dim, H, W)
+                
         return x
-
-    # def forward_encoder(self, img: torch.Tensor, feature_key: str = "x_norm_patchtokens"):
-    #     """
-    #     Multi-block DINOv3 feature extractor (dense map output).
-    #     """
-
-    #     img_h, img_w = img.shape[2:]
-    #     patches_h = img_h // self.patch_size
-    #     patches_w = img_w // self.patch_size
-
-    #     return_attention_features = feature_key in ["q", "k", "v", "attn"]
-
-    #     with torch.no_grad():
-    #         block_outputs = self.encoder.forward_features(
-    #             img,
-    #             return_attention_features=return_attention_features,
-    #             return_blocks=self.blocks
-    #         )
-
-    #         # if only final output
-    #         if self.blocks is None:
-    #             block_outputs = [block_outputs]
-
-    #     outs = []
-
-    #     for i, block in enumerate(block_outputs):
-
-    #         # ----------------------------
-    #         # DINOv3 SAFE FEATURE PICK
-    #         # ----------------------------
-    #         if feature_key not in block:
-    #             raise KeyError(
-    #                 f"Missing {feature_key} in block {i}. "
-    #                 f"Available keys: {list(block.keys())}"
-    #             )
-
-    #         x = block[feature_key]  # (B, 1+P, C) or (B, P, C)
-
-    #         # we only keep patch tokens
-    #         if x.ndim == 3 and x.shape[1] > patches_h * patches_w:
-    #             # remove CLS if present
-    #             x = x[:, 1:, :]
-
-    #         outs.append(x)
-
-    #     # ---------------------------------------
-    #     # concatenate across blocks (channel dim)
-    #     # ---------------------------------------
-    #     x = torch.cat(outs, dim=-1)  # (B, P, C * num_blocks)
-
-    #     B, N, C = x.shape
-
-    #     # ---------------------------------------
-    #     # reshape to spatial map
-    #     # ---------------------------------------
-    #     x = x.transpose(1, 2).contiguous()  # (B, C, N)
-
-    #     x = x.reshape(
-    #         B,
-    #         C,
-    #         patches_h,
-    #         patches_w
-    #     )
-    #     print(self.upsample_factor)
-    #     # optional upsample
-    #     if self.upsample_factor is not None:
-    #         x = F.interpolate(
-    #             x,
-    #             scale_factor=self.upsample_factor,
-    #             mode="bilinear",
-    #             align_corners=False
-    #         )
-    #     import matplotlib.pyplot as plt
-    #     activation = x[0]              # (384, 448, 896)
-    #     heatmap = activation.mean(dim=0)
-
-    #     # Normalize
-    #     # heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-
-    #     plt.imshow(heatmap.cpu(), cmap="jet")
-    #     plt.axis("off")
-    #     plt.savefig("test/activation_meanv3.png", bbox_inches="tight", pad_inches=0)
-    #     plt.close()
-    #     exit()
-    #     return x
