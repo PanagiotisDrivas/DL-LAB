@@ -1,0 +1,21 @@
+
+DISCLAIMER: You might want to check INSID3/models/__init__.py
+
+
+
+
+GENERATE 
+
+python infer_insid3.py --image target/test1.png --model_size small
+
+python create_mask.py --json-dir input/annotations --output-dir input/masks
+
+# BAtch
+
+python run_insid3.py --image-dir input/images
+
+# Single
+python run_insid3.py --image input/images/test.jpg
+
+# Remove masks else while JSON creation the mask will be used from previous runs
+python infer.py --image input/images/jena_000065_000025_leftImg8bit.png --max-instances 7 --remove-masks --type semantic

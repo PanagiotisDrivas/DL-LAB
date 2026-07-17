@@ -1,0 +1,22 @@
+PALETTE_HEX = [    
+    "#000000", "unlabeled",
+    "#804080", "road",
+    "#F423E8", "sidewalk",
+    "#464646", "building",
+    "#66669C", "wall",
+    "#BE9999", "fence",
+    "#999999",  "pole",
+    "#FAAA1E",  "traffic light",
+    "#DCDC00",  "traffic sign",
+    "#6B8E23",   "vegetation",
+    "#98FB98",   "terrain",
+    "#4682B4",   "sky",
+    "#DC143C",   "person",
+    "#FF0000",   "rider",
+    "#00008E",    "car",
+    "#000046",    "truck",
+    "#003C64",    "bus",
+    "#005064",     "train",
+    "#0000E6",    "motorcycle",
+    "#770B20",     "bicycle"
+]
