@@ -1,0 +1,14 @@
+DINOv3 Instance Segmentation Pipeline
+======================================
+
+python infer.py \
+    --model-name dinov3_vitb16 \
+    --input-dir bochum \
+    --topk 5 \
+    --max-context-length 11 \
+    --short-side 768
+
+To visualize
+python create_mask.py \
+    --json-dir input/bochum/annotations \
+    --output-dir input/bochum/masks
