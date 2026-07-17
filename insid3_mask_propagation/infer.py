@@ -41,7 +41,7 @@ def run(target_image, model_size, image_dir, max_instances=None, remove_masks=Fa
     # Build INSID3 model
     # --------------------------------
 
-    model = build_insid3(model_size=model_size)
+    model = build_insid3(model_size=model_size) #CHANGE SOMEE CONFIGGGSSSS HEERRREEEEEE
 
     class_masks = {}
 
