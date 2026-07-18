@@ -70,8 +70,6 @@ class SemanticFineTuner(FineTuner):
                  test_output_size: Optional[Tuple[int, int]] = None,
                  test_multi_scales: Optional[List[int]] = None,
                  test_plot: bool = False, test_save_dir: Optional[str] = None,):
-        if dinov3:
-            upsample_factor=16.0
         super().__init__(dinov2_vit_model=dinov2_vit_model,dinov3_vit_model=dinov3_vit_model, dinov3=dinov3, debug=debug, blocks=blocks,
                          upsample_factor=upsample_factor)
         self.num_classes = num_classes
