@@ -106,6 +106,118 @@ def create_semantic_mask(json_file, output_path):
 
     print("Saved:", output_path.name, "Classes:", np.unique(mask))
 
+def instance_mask_to_color(instance_mask):
+    """
+    Convert instance ID mask to a colorful RGB visualization.
+    Each instance gets a unique color.
+    """
+
+    height, width = instance_mask.shape
+
+    color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+
+    instance_ids = np.unique(instance_mask)
+
+    rng = np.random.default_rng(seed=42)
+
+    colors = {}
+
+    for instance_id in instance_ids:
+
+        if instance_id == 0:
+            colors[instance_id] = (0, 0, 0)  # background
+        else:
+            colors[instance_id] = rng.integers(
+                0, 255, size=3
+            )
+
+    for instance_id, color in colors.items():
+        color_mask[instance_mask == instance_id] = color
+
+    return color_mask
+def create_instance_mask(json_file, output_path):
+
+    with open(json_file, "r") as f:
+        data = json.load(f)
+
+    height = data["imgHeight"]
+    width = data["imgWidth"]
+
+    instance_mask = np.zeros(
+        (height, width),
+        dtype=np.uint16
+    )
+
+    class_instance_counter = {}
+
+    for obj in data["objects"]:
+
+        label = obj["label"]
+
+        if label not in CLASS_IDS:
+            continue
+
+        class_id = CLASS_IDS[label]
+
+        class_instance_counter[class_id] = (
+            class_instance_counter.get(class_id, 0) + 1
+        )
+
+        instance_number = class_instance_counter[class_id]
+
+        instance_id = class_id * 1000 + instance_number
+
+        temp = Image.new(
+            "L",
+            (width, height),
+            0
+        )
+
+        draw = ImageDraw.Draw(temp)
+
+        draw.polygon(
+            obj["polygon"],
+            fill=1
+        )
+
+        binary = np.array(temp) > 0
+
+        instance_mask[binary] = instance_id
+
+
+    # -------- Save raw instance IDs --------
+    instance_output = Path(
+        str(output_path).replace(
+            ".png",
+            "_instances.png"
+        )
+    )
+
+    Image.fromarray(
+        instance_mask,
+        mode="I;16"
+    ).save(instance_output)
+
+
+    # -------- Save colorful visualization --------
+    color_output = Path(
+        str(output_path).replace(
+            ".png",
+            "_instances.png"
+        )
+    )
+
+    color_mask = instance_mask_to_color(instance_mask)
+
+    Image.fromarray(
+        color_mask,
+        mode="RGB"
+    ).save(color_output)
+
+
+    print("Saved ID mask:", instance_output.name)
+    print("Saved color mask:", color_output.name)
+    print("Instances:", np.unique(instance_mask))
 
 def process_folder(json_dir, output_dir):
 
@@ -123,6 +235,11 @@ def process_folder(json_dir, output_dir):
         output_path = output_dir / f"{json_file.stem}.png"
 
         create_semantic_mask(json_file, output_path)
+        
+        create_instance_mask(
+            json_file,
+            output_path
+        )
 
 
 if __name__ == "__main__":
