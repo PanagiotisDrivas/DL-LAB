@@ -385,29 +385,39 @@ def process_video(
 # Export
 # --------------------------------------------------------------------------
 def polygon_from_mask(binary_mask):
+    """
+    Convert a binary mask into a polygon.
+
+    - Keeps only the largest connected component.
+    - Uses CHAIN_APPROX_NONE to preserve contour points.
+    - Applies a very light polygon simplification.
+    """
+
+    binary_mask = binary_mask.astype(np.uint8)
 
     contours, _ = cv2.findContours(
-        binary_mask.astype(np.uint8),
+        binary_mask,
         cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
+        cv2.CHAIN_APPROX_NONE,
     )
 
-    polygons = []
+    if len(contours) == 0:
+        return []
 
-    for c in contours:
+    # Keep only the largest contour
+    contour = max(contours, key=cv2.contourArea)
 
-        if len(c) < 3:
-            continue
+    # Ignore tiny objects
+    if cv2.contourArea(contour) < 3:
+        return []
 
-        epsilon = 0.002 * cv2.arcLength(c, True)
+    # Optional: very light simplification
+    epsilon = 0.0005 * cv2.arcLength(contour, True)
+    contour = cv2.approxPolyDP(contour, epsilon, True)
 
-        c = cv2.approxPolyDP(c, epsilon, True)
+    polygon = contour.reshape(-1, 2).tolist()
 
-        polygons.extend(
-            c.reshape(-1, 2).tolist()
-        )
-
-    return polygons
+    return polygon
 
 
 def save_json(
