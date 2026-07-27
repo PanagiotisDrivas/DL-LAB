@@ -59,6 +59,66 @@ PALETTE = [
     (119, 11, 32),
 ]
 
+# ------------------------------------------------------------------
+# Official Cityscapes labelIds (not this pipeline's compact CLASS_IDS)
+# https://github.com/mcordts/cityscapesScripts - labels.py
+# Used for labelIds.png / instanceIds.png so they line up pixel-value-wise
+# with the reference gtFine files in input/{city}/first_mask/rest/.
+# ------------------------------------------------------------------
+
+OFFICIAL_LABEL_IDS = {
+    "road": 7,
+    "sidewalk": 8,
+    "building": 11,
+    "wall": 12,
+    "fence": 13,
+    "pole": 17,
+    "traffic light": 19,
+    "traffic sign": 20,
+    "vegetation": 21,
+    "terrain": 22,
+    "sky": 23,
+    "person": 24,
+    "rider": 25,
+    "car": 26,
+    "truck": 27,
+    "bus": 28,
+    "train": 31,
+    "motorcycle": 32,
+    "bicycle": 33,
+}
+
+# "thing" classes get per-object instance IDs (labelId * 1000 + n) in instanceIds.png;
+# "stuff" classes (the rest) just carry their bare labelId, same as in labelIds.png.
+THING_CLASSES = {"person", "rider", "car", "truck", "bus", "train", "motorcycle", "bicycle"}
+
+
+def polygon_area(polygon):
+    """Shoelace formula. Used to draw the largest polygons first so a bad, oversized
+    blob can never paint over a smaller (more likely correct) object on top of it."""
+
+    n = len(polygon)
+
+    if n < 3:
+        return 0.0
+
+    area = 0.0
+
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+
+    return abs(area) / 2.0
+
+
+def objects_largest_first(objects):
+    """Sort objects by polygon area, descending, so smaller/more specific objects are
+    always drawn last and win pixel conflicts against larger, more error-prone ones."""
+
+    return sorted(objects, key=lambda obj: polygon_area(obj["polygon"]), reverse=True)
+
+
 def save_palette_image(mask, output_path):
 
     img = Image.fromarray(mask, mode="P")
@@ -86,6 +146,7 @@ def create_semantic_mask(json_file, output_path):
     mask = np.zeros((height, width), dtype=np.uint8)
 
     for obj in data["objects"]:
+    # for obj in objects_largest_first(data["objects"]):
 
         label = obj["label"]
 
@@ -151,6 +212,7 @@ def create_instance_mask(json_file, output_path):
     class_instance_counter = {}
 
     for obj in data["objects"]:
+    # for obj in objects_largest_first(data["objects"]):
 
         label = obj["label"]
 
@@ -219,6 +281,96 @@ def create_instance_mask(json_file, output_path):
     print("Saved color mask:", color_output.name)
     print("Instances:", np.unique(instance_mask))
 
+
+def create_labelids_mask(json_file, output_path):
+    """Single-channel uint8 PNG, pixel value = official Cityscapes labelId
+    (matches input/{city}/first_mask/rest/*_gtFine_labelIds.png)."""
+
+    with open(json_file, "r") as f:
+        data = json.load(f)
+
+    height = data["imgHeight"]
+    width = data["imgWidth"]
+
+    mask = np.zeros((height, width), dtype=np.uint8)
+
+    for obj in data["objects"]:
+    # for obj in objects_largest_first(data["objects"]):
+
+        label = obj["label"]
+
+        if label not in OFFICIAL_LABEL_IDS:
+            continue
+
+        temp = Image.new("L", (width, height), 0)
+
+        draw = ImageDraw.Draw(temp)
+
+        draw.polygon(obj["polygon"], fill=1)
+
+        binary = np.array(temp) > 0
+
+        mask[binary] = OFFICIAL_LABEL_IDS[label]
+
+    Image.fromarray(mask, mode="L").save(output_path)
+
+    print("Saved labelIds:", output_path.name, "Classes:", np.unique(mask))
+
+
+def create_instanceids_mask(json_file, output_path):
+    """Single-channel uint16 PNG, pixel value = labelId * 1000 + instance number
+    (matches input/{city}/first_mask/rest/*_gtFine_instanceIds.png)."""
+
+    with open(json_file, "r") as f:
+        data = json.load(f)
+
+    height = data["imgHeight"]
+    width = data["imgWidth"]
+
+    mask = np.zeros((height, width), dtype=np.uint16)
+
+    class_instance_counter = {}
+    
+    for obj in data["objects"]:
+    # for obj in objects_largest_first(data["objects"]):
+
+        label = obj["label"]
+
+        if label not in OFFICIAL_LABEL_IDS:
+            continue
+
+        label_id = OFFICIAL_LABEL_IDS[label]
+
+        if label in THING_CLASSES:
+            class_instance_counter[label_id] = class_instance_counter.get(label_id, 0) + 1
+            instance_number = class_instance_counter[label_id]
+            instance_id = label_id * 1000 + instance_number
+        else:
+            instance_id = label_id
+
+        temp = Image.new("L", (width, height), 0)
+
+        draw = ImageDraw.Draw(temp)
+
+        draw.polygon(obj["polygon"], fill=1)
+
+        binary = np.array(temp) > 0
+
+        mask[binary] = instance_id
+
+    Image.fromarray(mask, mode="I;16").save(output_path)
+
+    print("Saved instanceIds:", output_path.name, "Instances:", np.unique(mask))
+
+
+def gt_fine_stem(json_stem: str) -> str:
+    """<city>_<seq>_<frame>_leftImg8bit -> <city>_<seq>_<frame>_gtFine, matching the
+    naming SPINO's dataset loader expects for labelIds/instanceIds files."""
+    if json_stem.endswith("_leftImg8bit"):
+        return json_stem[: -len("_leftImg8bit")] + "_gtFine"
+    return f"{json_stem}_gtFine"
+
+
 def process_folder(json_dir, output_dir):
 
     json_dir = Path(json_dir)
@@ -234,11 +386,19 @@ def process_folder(json_dir, output_dir):
 
         output_path = output_dir / f"{json_file.stem}.png"
 
-        create_semantic_mask(json_file, output_path)
-        
-        create_instance_mask(
+        # create_semantic_mask(json_file, output_path)
+        create_instance_mask(json_file,output_path)
+
+        gt_stem = gt_fine_stem(json_file.stem)
+
+        create_labelids_mask(
             json_file,
-            output_path
+            output_dir / f"{gt_stem}_labelIds.png"
+        )
+
+        create_instanceids_mask(
+            json_file,
+            output_dir / f"{gt_stem}_instanceIds.png"
         )
 
 

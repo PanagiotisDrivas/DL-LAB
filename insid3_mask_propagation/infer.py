@@ -179,7 +179,7 @@ def parse_args():
     parser.add_argument(
         "--model_size",
         type=str,
-        default="small",
+        default="base",
         choices=["small", "base", "large"],
         help="INSID3 model size",
     )

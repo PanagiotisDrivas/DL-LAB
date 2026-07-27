@@ -11,6 +11,11 @@ parser.add_argument("--model-name", default="dinov3_vitb16")
 parser.add_argument("--topk", default="5")
 parser.add_argument("--max-context-length", default="11")
 parser.add_argument("--short-side", default="768")
+parser.add_argument(
+    "--num-before-frames",
+    default="19",
+    help="How many frames in frames/ come chronologically before the GT frame",
+)
 
 args = parser.parse_args()
 
@@ -55,6 +60,8 @@ for dataset in datasets:
                 "--frames-dir", str(dataset / "frames"),
                 "--first-mask",
                 f"output/{dataset_name}/probs/instance_mask/{class_name}_output/{class_name}_instance_mask.png",
+                "--reference-dir", str(dataset / "first_mask"),
+                "--num-before-frames", args.num_before_frames,
                 "--output-dir",
                 f"output/{dataset_name}/probs/out/{args.model_name}_{args.short_side}/{class_name}_tracking_{args.model_name}_{args.short_side}",
                 "--short-side", args.short_side,

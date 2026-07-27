@@ -13,7 +13,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--input-dir",
-    default="bochum"
+    default="aachen"
 )
 
 
@@ -30,6 +30,12 @@ parser.add_argument(
 parser.add_argument(
     "--short-side",
     default="768"
+)
+
+parser.add_argument(
+    "--num-before-frames",
+    default="19",
+    help="How many frames in frames/ come chronologically before the GT frame",
 )
 
 args = parser.parse_args()
@@ -73,6 +79,12 @@ for class_name in CLASSES:
 
         "--first-mask",
         f"output/{args.input_dir}/probs/instance_mask/{class_name}_output/{class_name}_instance_mask.png",
+
+        "--reference-dir",
+        f"input/{args.input_dir}/first_mask",
+
+        "--num-before-frames",
+        args.num_before_frames,
 
         "--output-dir",
         f"output/{args.input_dir}/probs/out/{args.model_name}_{args.short_side}/{class_name}_tracking_{args.model_name}_{args.short_side}",

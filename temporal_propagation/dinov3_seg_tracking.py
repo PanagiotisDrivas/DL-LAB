@@ -4,9 +4,10 @@ DINOv3 Segmentation Tracking Pipeline
 ======================================
 
 Modular version of Meta's segmentation_tracking.ipynb notebook.
-Given a folder of video frames (.jpg/.png) and a single GT instance mask
-for the first frame, propagates the mask to all frames via DINOv3 feature
-similarity, then exports frame/mask pairs to an output folder.
+Given a folder of context frames (.jpg/.png) and a single GT instance mask for a
+frame in the middle of that sequence, propagates the mask outward in both
+directions via DINOv3 feature similarity, then exports frame/mask pairs to an
+output folder.
 
 USAGE
 -----
@@ -15,17 +16,23 @@ python dinov3_seg_tracking.py \
     --weights /Users/sakila/Desktop/dinov3/weights/dinov3_vits16_pretrain_lvd1689m-08c60483.pth \
     --model-name dinov3_vits16 \
     --frames-dir /path/to/frames \
-    --first-mask /path/to/first_frame_mask.png \
+    --first-mask /path/to/gt_frame_instance_mask.png \
+    --reference-dir /path/to/first_mask \
+    --num-before-frames 19 \
     --output-dir /path/to/output
 
 INPUT FOLDER FORMAT
 --------------------
-frames-dir/
+frames-dir/                   - context frames, chronological order, GT frame excluded
     000001.jpg
     000002.jpg
     ...
+reference-dir/                - contains the GT frame's RGB image (any of .png/.jpg/.jpeg)
+    <gt_frame_image>.png
 first-mask: a single .png where pixel value 0 = background,
-            1..N = instance/class indices (uint8), matching frame 000001.
+            1..N = instance/class indices (uint8), for the GT frame in reference-dir.
+num-before-frames: how many of frames-dir's frames come chronologically before the
+            GT frame (the remainder are treated as after it).
 
 OUTPUT FOLDER FORMAT
 ---------------------
@@ -232,6 +239,22 @@ def build_transform(short_side: int, patch_size: int) -> TVT.Compose:
 
 
 # --------------------------------------------------------------------------
+# Reference (GT) frame lookup
+# --------------------------------------------------------------------------
+
+def find_reference_image(reference_dir: str) -> Path:
+    """The GT frame's RGB image lives alongside annotations.json in first_mask/."""
+    reference_dir = Path(reference_dir)
+    candidates = sorted(
+        p for p in reference_dir.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")
+    )
+    assert len(candidates) == 1, (
+        f"Expected exactly one reference frame image in {reference_dir}, found {len(candidates)}: {candidates}"
+    )
+    return candidates[0]
+
+
+# --------------------------------------------------------------------------
 # Core propagation algorithm
 # --------------------------------------------------------------------------
 
@@ -289,29 +312,24 @@ def postprocess_probs(probs: Tensor) -> Tensor:
 # Main video processing loop
 # --------------------------------------------------------------------------
 
-@torch.no_grad()
-def process_video(
+def compute_anchor_state(
     model: nn.Module,
-    frames: list[Image.Image],
+    anchor_image: Image.Image,
     first_mask_np: np.ndarray,
     num_masks: int,
     device: str,
     patch_size: int,
-    short_side: int = 336,
-    max_context_length: int = 3,
-    neighborhood_size: float = 12,
-    neighborhood_shape: str = "circle",
-    topk: int = 5,
-    temperature: float = 0.2,
-) -> tuple[Tensor, Tensor]:
-    """Returns (mask_predictions [T,H,W] uint8, mask_probabilities [T,M,H,W] float32)."""
-    num_frames = len(frames)
+    short_side: int,
+    neighborhood_size: float,
+    neighborhood_shape: str,
+):
+    """Extracts DINOv3 features/probs for the GT (anchor) frame plus the shared
+    transform/neighborhood-mask needed to propagate outward from it in either direction."""
+    transform = build_transform(short_side, patch_size)
     mask_height, mask_width = first_mask_np.shape
 
-    transform = build_transform(short_side, patch_size)
-
-    first_frame = transform(frames[0]).to(device)
-    _, frame_height, frame_width = first_frame.shape
+    anchor_frame = transform(anchor_image).to(device)
+    _, frame_height, frame_width = anchor_frame.shape
     feats_height, feats_width = frame_height // patch_size, frame_width // patch_size
     log.info(f"Feature map size (h, w): {feats_height}, {feats_width}")
 
@@ -321,29 +339,48 @@ def process_video(
     )[0, 0].long()
     first_probs = F.one_hot(first_mask, num_masks).float()
 
-    first_feats = forward(model, first_frame)
+    anchor_feats = forward(model, anchor_frame)
 
     neighborhood_mask = make_neighborhood_mask(
         feats_height, feats_width, size=neighborhood_size, shape=neighborhood_shape, device=device
     )
 
-    mask_predictions = torch.zeros([num_frames, mask_height, mask_width], dtype=torch.uint8)
-    mask_predictions[0, :, :] = torch.from_numpy(first_mask_np)
+    return transform, anchor_feats, first_probs, neighborhood_mask, feats_height, feats_width, mask_height, mask_width
 
+
+def propagate_sequence(
+    model: nn.Module,
+    transform: TVT.Compose,
+    anchor_feats: Tensor,
+    first_probs: Tensor,
+    frames: list[Image.Image],
+    device: str,
+    mask_height: int,
+    mask_width: int,
+    neighborhood_mask: Tensor,
+    max_context_length: int,
+    topk: int,
+    temperature: float,
+    desc: str = "Processing",
+) -> tuple[Tensor, Tensor]:
+    """Walks the anchor mask across `frames` in the given order (index 0 = frame
+    closest to the anchor). Returns (mask_predictions [T,H,W] uint8,
+    mask_probabilities [T,M,H,W] float32) aligned with `frames`."""
+    num_frames = len(frames)
+    num_masks = first_probs.shape[-1]
+
+    mask_predictions = torch.zeros([num_frames, mask_height, mask_width], dtype=torch.uint8)
     mask_probabilities = torch.zeros([num_frames, num_masks, mask_height, mask_width])
-    mask_probabilities[0, :, :, :] = F.one_hot(
-        torch.from_numpy(first_mask_np).long(), num_masks
-    ).movedim(-1, -3)
 
     features_queue: list[Tensor] = []
     probs_queue: list[Tensor] = []
 
     start = time.perf_counter()
-    for frame_idx in tqdm(range(1, num_frames), desc="Processing"):
+    for frame_idx in tqdm(range(num_frames), desc=desc):
         current_frame = transform(frames[frame_idx]).to(device)
         current_feats = forward(model, current_frame)
 
-        context_feats = torch.stack([first_feats, *features_queue], dim=0)
+        context_feats = torch.stack([anchor_feats, *features_queue], dim=0)
         context_probs = torch.stack([first_probs, *probs_queue], dim=0)
 
         current_probs = propagate(
@@ -375,7 +412,72 @@ def process_video(
         torch.mps.synchronize()
 
     elapsed = time.perf_counter() - start
-    log.info(f"Processing time: {datetime.timedelta(seconds=round(elapsed))}")
+    log.info(f"{desc} time: {datetime.timedelta(seconds=round(elapsed))}")
+
+    return mask_predictions, mask_probabilities
+
+
+@torch.no_grad()
+def process_video(
+    model: nn.Module,
+    anchor_image: Image.Image,
+    first_mask_np: np.ndarray,
+    num_masks: int,
+    before_frames: list[Image.Image],
+    after_frames: list[Image.Image],
+    device: str,
+    patch_size: int,
+    short_side: int = 336,
+    max_context_length: int = 3,
+    neighborhood_size: float = 12,
+    neighborhood_shape: str = "circle",
+    topk: int = 5,
+    temperature: float = 0.2,
+) -> tuple[Tensor, Tensor]:
+    """Propagates the GT mask on `anchor_image` outward in both directions: forward
+    through `after_frames` (chronological order) and backward through `before_frames`
+    (walked from the frame closest to the anchor outward to the earliest one).
+
+    Returns (mask_predictions [T,H,W] uint8, mask_probabilities [T,M,H,W] float32)
+    stacked back into chronological order, i.e. before_frames followed by after_frames
+    (T = len(before_frames) + len(after_frames); the anchor frame itself is not included,
+    since its GT mask is already known)."""
+    (
+        transform, anchor_feats, first_probs, neighborhood_mask,
+        feats_height, feats_width, mask_height, mask_width,
+    ) = compute_anchor_state(
+        model, anchor_image, first_mask_np, num_masks, device, patch_size, short_side,
+        neighborhood_size, neighborhood_shape,
+    )
+
+    common = dict(
+        model=model,
+        transform=transform,
+        anchor_feats=anchor_feats,
+        first_probs=first_probs,
+        device=device,
+        mask_height=mask_height,
+        mask_width=mask_width,
+        neighborhood_mask=neighborhood_mask,
+        max_context_length=max_context_length,
+        topk=topk,
+        temperature=temperature,
+    )
+
+    forward_predictions, forward_probabilities = propagate_sequence(
+        frames=after_frames, desc="Forward", **common
+    )
+
+    # walk from the frame closest to the anchor outward, then flip back to chronological order
+    backward_predictions, backward_probabilities = propagate_sequence(
+        frames=list(reversed(before_frames)), desc="Backward", **common
+    )
+    backward_predictions = torch.flip(backward_predictions, dims=[0])
+    backward_probabilities = torch.flip(backward_probabilities, dims=[0])
+
+    mask_predictions = torch.cat([backward_predictions, forward_predictions], dim=0)
+    mask_probabilities = torch.cat([backward_probabilities, forward_probabilities], dim=0)
+
     log.info(f"Mask predictions: shape={mask_predictions.shape}, dtype={mask_predictions.dtype}")
 
     return mask_predictions, mask_probabilities
@@ -561,7 +663,9 @@ def run_pipeline(
     model_name: str,
     frames_dir: str,
     first_mask: str,
+    reference_dir: str,
     output_dir: str,
+    num_before_frames: int = 19,
     short_side: int = 336,
     max_context_length: int = 3,
     neighborhood_size: float = 12,
@@ -575,17 +679,26 @@ def run_pipeline(
     model, patch_size, _ = load_model(dinov3_location, model_name, weights, device)
     frames = load_frames(frames_dir)
     first_mask_np, num_masks, id_mapping = load_first_mask(first_mask)
+    anchor_image = Image.open(find_reference_image(reference_dir)).convert("RGB")
 
-    assert frames[0].size[::-1] == first_mask_np.shape, (
-        f"Frame size {frames[0].size[::-1]} doesn't match mask size {first_mask_np.shape} "
-        "(first frame and first mask must be the same resolution)"
+    assert anchor_image.size[::-1] == first_mask_np.shape, (
+        f"Reference frame size {anchor_image.size[::-1]} doesn't match mask size {first_mask_np.shape} "
+        "(reference frame and first mask must be the same resolution)"
     )
+    assert 0 <= num_before_frames <= len(frames), (
+        f"--num-before-frames={num_before_frames} exceeds the number of frames found ({len(frames)})"
+    )
+
+    before_frames = frames[:num_before_frames]
+    after_frames = frames[num_before_frames:]
 
     mask_predictions, mask_probabilities = process_video(
         model=model,
-        frames=frames,
+        anchor_image=anchor_image,
         first_mask_np=first_mask_np,
         num_masks=num_masks,
+        before_frames=before_frames,
+        after_frames=after_frames,
         device=device,
         patch_size=patch_size,
         short_side=short_side,
@@ -612,8 +725,20 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="DINOv3 segmentation tracking, folder-in / folder-out")
     p.add_argument("--dinov3-location", required=True, help="Path to local dinov3 repo clone")
     p.add_argument("--model-name", default="dinov3_vits16", help="e.g. dinov3_vits16, dinov3_vitl16")
-    p.add_argument("--frames-dir", required=True, help="Folder of input video frames (.jpg/.png)")
-    p.add_argument("--first-mask", required=True, help="Path to first-frame GT mask (.png)")
+    p.add_argument(
+        "--frames-dir", required=True,
+        help="Folder of context frames (.jpg/.png), chronological order, excluding the GT frame itself",
+    )
+    p.add_argument("--first-mask", required=True, help="Path to the GT frame's instance mask (.png)")
+    p.add_argument(
+        "--reference-dir", required=True,
+        help="Folder containing the GT frame's RGB image (used to extract anchor features)",
+    )
+    p.add_argument(
+        "--num-before-frames", type=int, default=19,
+        help="How many of --frames-dir's frames come chronologically before the GT frame; "
+        "the rest are treated as after it",
+    )
     p.add_argument("--output-dir", required=True, help="Where to write frames/masks/overlays")
     p.add_argument("--short-side", type=int, default=512, help="Forward resolution short side")
     p.add_argument("--max-context-length", type=int, default=1)
@@ -639,7 +764,9 @@ def main() -> None:
         model_name=args.model_name,
         frames_dir=args.frames_dir,
         first_mask=args.first_mask,
+        reference_dir=args.reference_dir,
         output_dir=output_dir,
+        num_before_frames=args.num_before_frames,
         short_side=args.short_side,
         max_context_length=args.max_context_length,
         neighborhood_size=args.neighborhood_size,

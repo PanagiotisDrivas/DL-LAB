@@ -143,3 +143,17 @@ results/
 results_v3/
 
 *.pth
+SPINO/panoptic_label_generator/configs/boundary_cityscapes.ckpt
+SPINO/panoptic_label_generator/logs/boundary_cityscapes_v3.txt
+SPINO/panoptic_label_generator/logs/boundary_cityscapes.txt
+SPINO/panoptic_label_generator/logs/instance_cityscapes_v3.txt
+SPINO/panoptic_label_generator/logs/semantic_cityscapes_v3.txt
+SPINO/panoptic_label_generator/logs/semantic_cityscapes.txt
+SPINO/panoptic_label_generator/models_v3/.dino_v3.py.swo
+SPINO/panoptic_label_generator/models_v3/.dino_v3.py.swp
+SPINO/panoptic_label_generator/test/dinov3/activation_mean_4_2048_dinov3.png
+SPINO/panoptic_label_generator/test/dinov3/aorg_dinov3.png
+SPINO/panoptic_label_generator/test/dinov3/semantic_dinov3.png
+temporal_propagation/input/
+insid3_mask_propagation/input/
+insid3_mask_propagation/aggregated_masks/
