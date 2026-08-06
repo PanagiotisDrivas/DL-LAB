@@ -92,31 +92,11 @@ OFFICIAL_LABEL_IDS = {
 # "stuff" classes (the rest) just carry their bare labelId, same as in labelIds.png.
 THING_CLASSES = {"person", "rider", "car", "truck", "bus", "train", "motorcycle", "bicycle"}
 
-
-def polygon_area(polygon):
-    """Shoelace formula. Used to draw the largest polygons first so a bad, oversized
-    blob can never paint over a smaller (more likely correct) object on top of it."""
-
-    n = len(polygon)
-
-    if n < 3:
-        return 0.0
-
-    area = 0.0
-
-    for i in range(n):
-        x1, y1 = polygon[i]
-        x2, y2 = polygon[(i + 1) % n]
-        area += x1 * y2 - x2 * y1
-
-    return abs(area) / 2.0
-
-
-def objects_largest_first(objects):
-    """Sort objects by polygon area, descending, so smaller/more specific objects are
-    always drawn last and win pixel conflicts against larger, more error-prone ones."""
-
-    return sorted(objects, key=lambda obj: polygon_area(obj["polygon"]), reverse=True)
+# Official per-class Cityscapes colors, keyed by label name (same order as
+# OFFICIAL_LABEL_IDS and PALETTE, so every class shares one color regardless of
+# instance -- matching the real *_gtFine_color.png ground truth files exactly,
+# for direct visual comparison.
+OFFICIAL_LABEL_COLORS = dict(zip(OFFICIAL_LABEL_IDS.keys(), PALETTE[1:]))
 
 
 def save_palette_image(mask, output_path):
@@ -363,11 +343,52 @@ def create_instanceids_mask(json_file, output_path):
     print("Saved instanceIds:", output_path.name, "Instances:", np.unique(mask))
 
 
+def create_gtfine_color_mask(json_file, output_path):
+    """RGB PNG colored with the official per-class Cityscapes palette (same color
+    for every instance of a class), matching the real *_gtFine_color.png ground
+    truth files pixel-for-pixel in color scheme, for direct visual comparison."""
+
+    with open(json_file, "r") as f:
+        data = json.load(f)
+
+    height = data["imgHeight"]
+    width = data["imgWidth"]
+
+    color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+
+    for obj in data["objects"]:
+
+        label = obj["label"]
+
+        if label not in OFFICIAL_LABEL_COLORS:
+            continue
+
+        temp = Image.new("L", (width, height), 0)
+
+        draw = ImageDraw.Draw(temp)
+
+        draw.polygon(obj["polygon"], fill=1)
+
+        binary = np.array(temp) > 0
+
+        color_mask[binary] = OFFICIAL_LABEL_COLORS[label]
+
+    Image.fromarray(color_mask, mode="RGB").save(output_path)
+
+    print("Saved color (Cityscapes palette):", output_path.name)
+
+
 def gt_fine_stem(json_stem: str) -> str:
-    """<city>_<seq>_<frame>_leftImg8bit -> <city>_<seq>_<frame>_gtFine, matching the
-    naming SPINO's dataset loader expects for labelIds/instanceIds files."""
+    """<city>_<seq>_<frame>_leftImg8bit -> <city>_<seq>_<frame>_gtFine, or
+    <city>_<seq>_<frame>_gtFine_polygons -> <city>_<seq>_<frame>_gtFine (already
+    gtFine-named annotation, just drop "_polygons"), matching the naming SPINO's
+    dataset loader expects for labelIds/instanceIds files."""
     if json_stem.endswith("_leftImg8bit"):
         return json_stem[: -len("_leftImg8bit")] + "_gtFine"
+    if json_stem.endswith("_gtFine_polygons"):
+        return json_stem[: -len("_polygons")]
+    if json_stem.endswith("_gtFine"):
+        return json_stem
     return f"{json_stem}_gtFine"
 
 
@@ -384,10 +405,8 @@ def process_folder(json_dir, output_dir):
 
     for json_file in json_files:
 
-        output_path = output_dir / f"{json_file.stem}.png"
-
         # create_semantic_mask(json_file, output_path)
-        create_instance_mask(json_file,output_path)
+        # create_instance_mask(json_file, output_path)  # superseded by create_gtfine_color_mask
 
         gt_stem = gt_fine_stem(json_file.stem)
 
@@ -399,6 +418,11 @@ def process_folder(json_dir, output_dir):
         create_instanceids_mask(
             json_file,
             output_dir / f"{gt_stem}_instanceIds.png"
+        )
+
+        create_gtfine_color_mask(
+            json_file,
+            output_dir / f"{gt_stem}_color.png"
         )
 
 

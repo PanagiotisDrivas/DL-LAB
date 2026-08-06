@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from config import CLASSES
 
@@ -13,9 +14,15 @@ def get_frame_mapping(frames_dir):
 
     for idx, frame in enumerate(frames):
 
-        mapping[idx] = (
-            frame.stem + ".json"
-        )
+        file_base = frame.stem
+
+        if file_base.endswith("_leftImg8bit"):
+            file_base = file_base[: -len("_leftImg8bit")]
+
+        # matches Cityscapes' own "_gtFine_polygons.json" annotation naming, so a
+        # re-run overwrites the same file in place instead of writing alongside it
+        # under a different name
+        mapping[idx] = f"{file_base}_gtFine_polygons.json"
 
     print("Frame mapping:")
 
@@ -28,6 +35,40 @@ def get_frame_mapping(frames_dir):
 
     return mapping
 
+
+
+def rename_to_frame_names(
+        tracking_json_dir,
+        frames_dir,
+        output_dir
+):
+    """Copies each positional {i:06d}.json from a single joint (all-classes)
+    tracking run to its real frame filename. Unlike merge_json, there's nothing
+    to combine here since one joint tracking run already contains every class."""
+
+    tracking_json_dir = Path(tracking_json_dir)
+    output_dir = Path(output_dir)
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    json_files = sorted(tracking_json_dir.glob("*.json"))
+
+    print("Tracking frames:", len(json_files))
+
+    frame_mapping = get_frame_mapping(frames_dir)
+
+    for json_file in json_files:
+
+        frame_id = int(json_file.stem)
+
+        output_name = frame_mapping.get(frame_id, json_file.name)
+
+        shutil.copy(json_file, output_dir / output_name)
+
+        print(f"Copied {json_file.name} -> {output_name}")
 
 
 def merge_json(

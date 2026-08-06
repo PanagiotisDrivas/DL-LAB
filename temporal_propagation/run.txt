@@ -9,10 +9,13 @@ python infer.py \
     --short-side 768
 
 To visualize
-python create_mask.py --json-dir input/aachen/annotations  --output-dir input/aachen/masks &&
-python create_mask.py --json-dir input/bremen1/annotations  --output-dir input/bremen1/masks &&
-python create_mask.py --json-dir input/bremen2/annotations  --output-dir input/bremen2/masks
-python create_mask.py --json-dir input/cologne/annotations  --output-dir input/cologne/masks
-python create_mask.py --json-dir input/darmstadt1/annotations  --output-dir input/darmstadt1/masks
-python create_mask.py --json-dir input/darmstadt2/annotations  --output-dir input/darmstadt2/masks
-python create_mask.py --json-dir input/darmstadt3/annotations  --output-dir input/darmstadt3/masks
+python create_mask.py --json-dir input/aachen/annotations  --output-dir  temporal_propagation/temporal_dataset/gtFine/train/aachen &&
+python create_mask.py --json-dir input/bremen1/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/bremen &&
+python create_mask.py --json-dir input/bremen2/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/bremen
+python create_mask.py --json-dir input/cologne/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/cologne
+python create_mask.py --json-dir input/darmstadt1/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/darmstadt
+python create_mask.py --json-dir input/darmstadt2/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/darmstadt
+python create_mask.py --json-dir input/darmstadt3/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/darmstadt
+python create_mask.py --json-dir input/dusseldorf/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/dusseldorf
+python create_mask.py --json-dir input/hamburg/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/hamburg
+python create_mask.py --json-dir input/zurich/annotations  --output-dir temporal_propagation/temporal_dataset/gtFine/train/zurich

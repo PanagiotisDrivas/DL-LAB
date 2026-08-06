@@ -22,7 +22,7 @@ This repository contains a pipeline to temporally propagate an initial instance 
 
 1. **Extract:** Gather consecutive frames and the corresponding ground-truth instance mask (`gtFine`) for the **annotated (GT) frame** of a Cityscapes city sequence — by convention the 20th frame of a 30-frame snippet (19 frames before it, 10 after).
 2. **Structure:** Format the data into the `temporal_propagation/input/` directory. The GT frame's own image is excluded from `frames/` and instead placed in `first_mask/` next to its annotation.
-3. **Propagate:** Run the tracking scripts from within the `temporal_propagation/` directory. The GT mask is propagated **both forward** through the frames after it and **backward** (walking outward from the frame closest to the GT) through the frames before it, then stitched back into chronological order.
+3. **Propagate:** Run the tracking scripts from within the `temporal_propagation/` directory. All of the GT frame's objects, across every class, are combined into a single instance mask and tracked in **one joint DINOv3 run** — every pixel's label comes from real competition among all classes/instances at once, not from 19 independent per-class trackers merged afterward. The combined mask is propagated **both forward** through the frames after the GT frame and **backward** (walking outward from the frame closest to the GT) through the frames before it, then stitched back into chronological order.
 
 ---
 

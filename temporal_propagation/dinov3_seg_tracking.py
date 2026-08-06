@@ -486,13 +486,18 @@ def process_video(
 # --------------------------------------------------------------------------
 # Export
 # --------------------------------------------------------------------------
-def polygon_from_mask(binary_mask):
+def polygon_from_mask(binary_mask, min_area=4):
     """
-    Convert a binary mask into a polygon.
+    Convert a binary mask into one or more polygons.
 
-    - Keeps only the largest connected component.
+    - Keeps every connected component above min_area, not just the largest, so a
+      visible fragment split off by something occluding it in front isn't
+      silently dropped.
     - Uses CHAIN_APPROX_NONE to preserve contour points.
-    - Applies a very light polygon simplification.
+    - Applies a very light polygon simplification to each fragment.
+
+    Returns a list of polygons (each a flat list of [x, y] points) -- zero, one,
+    or several per mask depending on how many significant fragments it has.
     """
 
     binary_mask = binary_mask.astype(np.uint8)
@@ -503,23 +508,21 @@ def polygon_from_mask(binary_mask):
         cv2.CHAIN_APPROX_NONE,
     )
 
-    if len(contours) == 0:
-        return []
+    polygons = []
 
-    # Keep only the largest contour
-    contour = max(contours, key=cv2.contourArea)
+    for contour in contours:
 
-    # Ignore tiny objects
-    if cv2.contourArea(contour) < 3:
-        return []
+        # Ignore tiny fragments
+        if cv2.contourArea(contour) < min_area:
+            continue
 
-    # Optional: very light simplification
-    epsilon = 0.0005 * cv2.arcLength(contour, True)
-    contour = cv2.approxPolyDP(contour, epsilon, True)
+        # Optional: very light simplification
+        epsilon = 0.0005 * cv2.arcLength(contour, True)
+        contour = cv2.approxPolyDP(contour, epsilon, True)
 
-    polygon = contour.reshape(-1, 2).tolist()
+        polygons.append(contour.reshape(-1, 2).tolist())
 
-    return polygon
+    return polygons
 
 
 def save_json(
@@ -549,15 +552,23 @@ def save_json(
 
         class_id = info["classId"]
 
-        objects.append(
-            {
-                # "instanceId": info["instanceId"],
-                # "classId": class_id,
-                "label": ID_TO_CLASS.get(class_id, "unknown"),
-                # "area": int(binary.sum()),
-                "polygon": polygons,
-            }
-        )
+        label = ID_TO_CLASS.get(class_id, "unknown")
+
+        # One object entry per fragment (same label/instance, possibly split into
+        # several disconnected pieces by something occluding it in front) -- keeps
+        # each "polygon" a single flat point list, so nothing downstream that reads
+        # obj["polygon"] needs to change.
+        for polygon in polygons:
+
+            objects.append(
+                {
+                    # "instanceId": info["instanceId"],
+                    # "classId": class_id,
+                    "label": label,
+                    # "area": int(binary.sum()),
+                    "polygon": polygon,
+                }
+            )
 
     data = {
         "imgHeight": int(H),
@@ -752,12 +763,25 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     output_dir = args.output_dir
-    
-    if args.model_name=="dinov3_vits16":
-        weights = "../checkpoints/dinov3_vits16.pth"
-    if args.model_name=="dinov3_vitb16":
-        weights = "../checkpoints/dinov3_vitb16.pth"
-    
+
+    # The ViT-L (and ViT-L+) hub factory functions sniff an 8-char hash out of the
+    # weights filename itself (dinov3/hub/backbones.py) to pick between the
+    # LVD1689M/SAT493M architecture variants -- so their checkpoint filename must
+    # end in "-XXXXXXXX.pth", unlike the smaller models which accept a plain path.
+    # 8aa4cbdd is the standard LVD1689M hash (same default as vits16/vitb16).
+    large_model_hash_suffix = {
+        "dinov3_vitl16": "-8aa4cbdd",
+        "dinov3_vitl16plus": "-8aa4cbdd",
+    }
+    suffix = large_model_hash_suffix.get(args.model_name, "")
+    weights = f"../checkpoints/{args.model_name}{suffix}.pth"
+    assert Path(weights).exists(), (
+        f"No checkpoint found for --model-name {args.model_name} (expected {weights}). "
+        "Download it and place it there, matching the existing dinov3_vits16.pth / "
+        "dinov3_vitb16.pth / dinov3_vitl16.pth naming (ViT-L variants additionally need "
+        "a symlink ending in -8aa4cbdd.pth so the hub loader can detect the architecture)."
+    )
+
     run_pipeline(
         dinov3_location=args.dinov3_location,
         weights=weights,

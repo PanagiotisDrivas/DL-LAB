@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path
-import json
 
 def main():
     # Run from root of SPINO folder
@@ -10,6 +9,7 @@ def main():
     sys.path.append(Path(__file__).parent.parent.parent.absolute().as_posix())
 
     import argparse
+    import json
     import socket
 
     import torch
@@ -92,8 +92,8 @@ def main():
     else:
         raise NotImplementedError(f"Dataset {args.dataset_name} not implemented")
 
-    gt_dataloader = DataLoader(gt_dataset, batch_size=8, shuffle=False, num_workers=8)
-    pred_dataloader = DataLoader(pred_dataset, batch_size=8, shuffle=False, num_workers=8)
+    gt_dataloader = DataLoader(gt_dataset, batch_size=4, shuffle=False, num_workers=4)
+    pred_dataloader = DataLoader(pred_dataset, batch_size=4, shuffle=False, num_workers=4)
 
     # Create algorithms and evaluators
     instance_center_loss = CenterLoss()
@@ -141,16 +141,18 @@ def main():
     print(f"Confusion matrix:\n{confusion_matrix}")
     print("******************")
 
-    with open("acc_score.json", "w") as f:
-        json.dump(acc_score, f, indent=2)
-
-    with open("sem_miou_score.json", "w") as f:
-        json.dump(sem_miou_score, f, indent=2)
-
     # Plot and save confusion matrix
     conf_mat_plt = plot_confusion_matrix(confusion_matrix, [], label_mode=dataset_cfg.label_mode)
-    conf_mat_plt.figure.savefig("confusion_matrix.png", dpi=300, bbox_inches="tight")
+    conf_mat_plt.figure.savefig("metrices/confusion_matrix.png", dpi=300, bbox_inches="tight")
 
+    with open("metrices/acc_score.json", "w") as f:
+        json.dump(acc_score.item(), f, indent=2)
+
+    with open("metrices/sem_miou_score.json", "w") as f:
+        json.dump(sem_miou_score.item(), f, indent=2)
+
+    with open("metrices/panoptic_results.json", "w") as f:
+        json.dump(panoptic_eval.evaluate(), f, indent=2)
 if __name__ == "__main__":
     from multiprocessing import freeze_support
     freeze_support()
