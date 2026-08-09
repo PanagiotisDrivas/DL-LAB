@@ -29,6 +29,7 @@ Full package list exported via `pip freeze` from this environment:
 ```bash
 conda create -n spino-v3 python=3.10
 conda activate spino-v3
+pip install -r requirements-spino-v3.txt --no-build-isolation
 ```
 Cuda-gpu:
 ```bash
@@ -38,8 +39,10 @@ Cuda-cpu:
 ```bash
 pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 -f https://download.pytorch.org/whl/cpu/torch_stable.html
 ```
+Compile deformable attention
 ```bash
-pip install -r requirements-spino-v3.txt --no-build-isolation
+cd SPINO/panoptic_segmentation_model/external/ms_deformable_attention
+sh make.s
 ```
 
 ---
