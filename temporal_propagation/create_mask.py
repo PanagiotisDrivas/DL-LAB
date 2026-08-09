@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -392,6 +393,28 @@ def gt_fine_stem(json_stem: str) -> str:
     return f"{json_stem}_gtFine"
 
 
+def copy_first_mask_ground_truth(first_mask_dir, output_dir):
+    """Copies the human-annotated GT frame's polygons.json (in first_mask_dir) and its
+    labelIds/instanceIds/color PNGs (in first_mask_dir/rest) into the gtFine dataset
+    tree, alongside the propagated frames' masks. Filenames already match the
+    <city>_<seq>_<frame>_gtFine_{polygons.json,labelIds.png,instanceIds.png,color.png}
+    convention, so no renaming is needed."""
+
+    first_mask_dir = Path(first_mask_dir)
+    output_dir = Path(output_dir)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for gt_file in first_mask_dir.glob("*_gtFine_polygons.json"):
+        shutil.copy2(gt_file, output_dir / gt_file.name)
+
+    rest_dir = first_mask_dir / "rest"
+
+    for suffix in ("_gtFine_labelIds.png", "_gtFine_instanceIds.png", "_gtFine_color.png"):
+        for gt_file in rest_dir.glob(f"*{suffix}"):
+            shutil.copy2(gt_file, output_dir / gt_file.name)
+
+
 def process_folder(json_dir, output_dir):
 
     json_dir = Path(json_dir)
@@ -423,6 +446,11 @@ def process_folder(json_dir, output_dir):
         create_gtfine_color_mask(
             json_file,
             output_dir / f"{gt_stem}_color.png"
+        )
+
+        shutil.copy2(
+            json_file,
+            output_dir / f"{gt_stem}_polygons.json"
         )
 
 
