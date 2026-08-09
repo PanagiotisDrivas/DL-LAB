@@ -43,7 +43,6 @@ by the temporal/insid3 pipelines via `../checkpoints/<model_name>.pth`:
 checkpoints/
 ├── dinov3_vits16.pth
 ├── dinov3_vitb16.pth
-└── dinov3_vitl16.pth
 ```
 
 
@@ -101,10 +100,9 @@ python instance_clustering.py test --trainer.devices [0] --config configs/instan
 ## 5. Change .yaml 
 1) Each config's `data.init_args.cfg_dataset.path` points at whichever dataset you want
 to train/test against (`../../temporal_propagation/temporal_dataset` or 
-`../../insid3_mask_propagation/insid3_dataset_ran_on_full_size`). 
+`../../insid3_mask_propagation/insid3_dataset`). 
 
-2) The `train_sample_indices` in each config determines which frames are used for training. This matters because `temporal_propagation` can generate a labelIds file for *every*
-frame in a sequence 
+2) The `train_sample_indices` in each config determines which frames are used for training. Currently it is configured to train the semantic head with the Ground Truth Masks + 50 generated masks from the insid3 pipeline and the boundary head with the Ground Truth Masks + 50 generated masks from the temporal mask propagation pipeline.
 
 Current values are in the configs themselves — check
 `SPINO/panoptic_label_generator/configs/*.yaml` directly .
