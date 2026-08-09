@@ -137,7 +137,7 @@ def create_semantic_mask(json_file, output_path):
 
         draw = ImageDraw.Draw(temp)
 
-        draw.polygon(obj["polygon"], fill=1)
+        draw.polygon([tuple(pt) for pt in obj["polygon"]], fill=1)
 
         binary = np.array(temp) > 0
 
@@ -218,7 +218,7 @@ def create_instance_mask(json_file, output_path):
         draw = ImageDraw.Draw(temp)
 
         draw.polygon(
-            obj["polygon"],
+            [tuple(pt) for pt in obj["polygon"]],
             fill=1
         )
 
@@ -286,7 +286,7 @@ def create_labelids_mask(json_file, output_path):
 
         draw = ImageDraw.Draw(temp)
 
-        draw.polygon(obj["polygon"], fill=1)
+        draw.polygon([tuple(pt) for pt in obj["polygon"]], fill=1)
 
         binary = np.array(temp) > 0
 
@@ -332,7 +332,7 @@ def create_instanceids_mask(json_file, output_path):
 
         draw = ImageDraw.Draw(temp)
 
-        draw.polygon(obj["polygon"], fill=1)
+        draw.polygon([tuple(pt) for pt in obj["polygon"]], fill=1)
 
         binary = np.array(temp) > 0
 
@@ -367,7 +367,7 @@ def create_gtfine_color_mask(json_file, output_path):
 
         draw = ImageDraw.Draw(temp)
 
-        draw.polygon(obj["polygon"], fill=1)
+        draw.polygon([tuple(pt) for pt in obj["polygon"]], fill=1)
 
         binary = np.array(temp) > 0
 
