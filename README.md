@@ -35,14 +35,14 @@ Cuda-gpu:
 ```bash
 pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 ```
-Cuda-cpu:
+OR Cuda-cpu:
 ```bash
 pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 -f https://download.pytorch.org/whl/cpu/torch_stable.html
 ```
 Compile deformable attention
 ```bash
 cd SPINO/panoptic_segmentation_model/external/ms_deformable_attention
-sh make.s
+sh make.sh
 ```
 
 ---
