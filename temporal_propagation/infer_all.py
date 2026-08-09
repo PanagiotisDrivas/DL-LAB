@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 import shutil
 from utils.merge import merge_json
-from create_mask import process_folder
+from create_mask import process_folder, copy_first_mask_ground_truth
 from config import CLASSES
 
 parser = argparse.ArgumentParser()
@@ -109,6 +109,11 @@ for dataset in datasets:
     gt_fine_dir = Path(args.dataset_root) / "gtFine" / args.split / city_name
     process_folder(
         json_dir=str(dataset / "annotations"),
+        output_dir=str(gt_fine_dir),
+    )
+
+    copy_first_mask_ground_truth(
+        first_mask_dir=str(dataset / "first_mask"),
         output_dir=str(gt_fine_dir),
     )
 
