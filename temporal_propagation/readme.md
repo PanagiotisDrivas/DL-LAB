@@ -55,7 +55,7 @@ The complete pipeline consists of three main steps:
 
 # Step 1: The `temporal_dataset` (Provided in google drive)
 
-`temporal_dataset/` is a SPINO-ready Cityscapes-style dataset tree, with `leftImg8bit_sequence/` already populated with the sequence images..
+`temporal_dataset/` is a SPINO-ready Cityscapes-style dataset tree, with `leftImg8bit_sequence/` already populated with the sequence images. You can skip steps 2-3 if `temporal_dataset/` is downloaded thru the cloud.
 
 ---
 
@@ -132,22 +132,10 @@ python infer.py \
 
 # Example Commands
 
-## Use the small DINOv3 backbone
-
-```bash
-python infer.py --input-dir bochum --model-name dinov3_vits16
-```
-
 ## Widen the temporal context and neighbor search
 
 ```bash
 python infer.py --input-dir bochum --max-context-length 15 --topk 8
-```
-
-## Write into the validation split
-
-```bash
-python infer.py --input-dir frankfurt --split val
 ```
 
 ## Process every sequence in `input/`
@@ -185,10 +173,9 @@ temporal_dataset/
 ```bash
 cd temporal_propagation
 
-# 1. Place temporal_dataset/ and input/ inside  temporal_propagation/, provided in Google Drive.
+# 1. Place input/ inside temporal_propagation/, provided in Google Drive 
 
-# 2. Propagate every sequence and write annotations into temporal_dataset/
-python infer_all.py
+# 2. Place temporal_dataset/ inside temporal_propagation/, provided in Google Drive or propagate every sequence and write annotations into temporal_dataset/ by running python infer_all.py
 ```
 
 Each sequence's propagated instance mask lands in `temporal_dataset/gtFine/<split>/<city>/`, ready for SPINO training against the already-provided `temporal_dataset/leftImg8bit_sequence/`.
