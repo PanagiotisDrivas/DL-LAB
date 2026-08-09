@@ -6,11 +6,11 @@ each turn a handful of manually-annotated Cityscapes frames into many more label
 frames:
 
 - **[`temporal_propagation/`](temporal_propagation/)** — propagates one annotated
-  frame's mask forward and backward through a video sequence using DINOv3
-  feature-similarity tracking.
+frame's mask forward and backward through a video sequence using DINOv3
+feature-similarity tracking.
 - **[`insid3_mask_propagation/`](insid3_mask_propagation/)** — generates masks for new
-  images via reference-based semantic matching (INSID3) against a bank of labeled
-  example crops, no temporal video sequence required.
+images via reference-based semantic matching (INSID3) against a bank of labeled
+example crops, no temporal video sequence required.
 
 Each has its own README with full usage details; this document covers the parts that
 tie everything together: environment setup, how to actually run SPINO against
@@ -29,9 +29,21 @@ Full package list exported via `pip freeze` from this environment:
 ```bash
 conda create -n spino-v3 python=3.10
 conda activate spino-v3
-pip install -r requirements-spino-v3.txt
+pip install -r requirements-spino-v3.txt --no-build-isolation
 ```
-
+Cuda-gpu:
+```bash
+pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
+```
+OR Cuda-cpu:
+```bash
+pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+```
+Compile deformable attention
+```bash
+cd SPINO/panoptic_segmentation_model/external/ms_deformable_attention
+sh make.sh
+```
 This repo has a git submodule
 ([`facebookresearch/dinov3`](https://github.com/facebookresearch/dinov3), `FINO` branch,
 checked out at `SPINO/panoptic_label_generator/dinov3_dict`) that the DINOv3 backbone
@@ -48,8 +60,7 @@ Otherwise `dinov3_dict/` shows up as an empty directory and the DINOv3 imports f
 
 ## 2. Checkpoints (on Google Drive)
 
-DINO backbone weights live in [`checkpoints/`](checkpoints/), referenced
-by the temporal/insid3 pipelines via `../checkpoints/<model_name>.pth`:
+DINO backbone weights should be put in [`checkpoints/`](checkpoints/), can be downloaded:
 
 ```
 checkpoints/
@@ -59,7 +70,7 @@ checkpoints/
 
 
 SPINO's own fine-tuned checkpoints (semantic/boundary heads) live under
-`SPINO/panoptic_label_generator/checkpoints/` (v2) and `checkpoints_v3/` (v3).
+`SPINO/panoptic_label_generator/checkpoints_v3/`.
 
 ---
 
@@ -68,9 +79,9 @@ SPINO's own fine-tuned checkpoints (semantic/boundary heads) live under
 Pick one pipeline (or use both and merge — see §5):
 
 - **`temporal_propagation/`**: See its own
-  [readme.md](temporal_propagation/readme.md) for the exact input layout.
+[readme.md](temporal_propagation/readme.md) for the exact input layout.
 - **`insid3_mask_propagation/`**: See its own
-  [readme.md](insid3_mask_propagation/readme.md).
+[readme.md](insid3_mask_propagation/readme.md).
 
 Both pipelines write a SPINO-ready dataset with this layout:
 
@@ -80,8 +91,8 @@ Both pipelines write a SPINO-ready dataset with this layout:
 │   ├── train/<city>/<city>_<seq>_<frame>_gtFine_{labelIds,instanceIds,polygons.json,color}.{png,json}
 │   └── val/<city>/...                      (non-generated GT)
 └── leftImg8bit_sequence/
-    ├── train/<city>/<city>_<seq>_<frame>_leftImg8bit.png
-    └── val/<city>/...
+   ├── train/<city>/<city>_<seq>_<frame>_leftImg8bit.png
+   └── val/<city>/...
 ```
 
 ---
@@ -106,6 +117,8 @@ python boundary_fine_tuning.py fit --trainer.devices [0] --config configs/bounda
 # 3. Run inference with both trained heads + cluster into final panoptic output
 python instance_clustering.py test --trainer.devices [0] --config configs/instance_cityscapes_v3.yaml > logs/instance_cityscapes_v3.txt 2>&1
 ```
+Note: Please remove "-v1" from the naming of boundary/sematic head if present.
+Note: Please remove "-v1" from the naming of boundary/semantic head if present.
 
 ---
 
@@ -127,9 +140,9 @@ Current values are in the configs themselves — check
 cd SPINO
 conda activate spino-v3
 python -m panoptic_segmentation_model.scripts.evaluate_labels \
-    --dataset_name cityscapes --gpu_id 0 \
-    --gt_path <path_to_gt_dataset> \
-    --pred_path panoptic_label_generator/results_v3/cityscapes/
+--dataset_name cityscapes --gpu_id 0 \
+--gt_path <path_to_gt_dataset> \
+--pred_path panoptic_label_generator/results_v3/cityscapes/
 ```
 This writes `metrices/acc_score.json`, `metrices/sem_miou_score.json`,
 `metrices/confusion_matrix.png`, and `metrices/panoptic_results.json`. 
