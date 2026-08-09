@@ -59,7 +59,7 @@ checkpoints/
 
 
 SPINO's own fine-tuned checkpoints (semantic/boundary heads) live under
-`SPINO/panoptic_label_generator/checkpoints/` (v2) and `checkpoints_v3/` (v3).
+`SPINO/panoptic_label_generator/checkpoints_v3/`.
 
 ---
 
