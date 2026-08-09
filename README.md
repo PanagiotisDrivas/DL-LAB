@@ -33,11 +33,11 @@ pip install -r requirements-spino-v3.txt --no-build-isolation
 ```
 Cuda-gpu:
 ```bash
-pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
 ```
 OR Cuda-cpu:
 ```bash
-pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 -f https://download.pytorch.org/whl/cpu/torch_stable.html
+pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
 ```
 Compile deformable attention
 ```bash
