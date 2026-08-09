@@ -333,7 +333,8 @@ def compute_anchor_state(
     feats_height, feats_width = frame_height // patch_size, frame_width // patch_size
     log.info(f"Feature map size (h, w): {feats_height}, {feats_width}")
 
-    first_mask = torch.from_numpy(first_mask_np).to(device, dtype=torch.long)
+    # first_mask = torch.from_numpy(first_mask_np).to(device, dtype=torch.long)
+    first_mask = torch.from_numpy(first_mask_np.astype(np.int32)).to(device, dtype=torch.long)
     first_mask = F.interpolate(
         first_mask[None, None, :, :].float(), (feats_height, feats_width), mode="nearest-exact"
     )[0, 0].long()
