@@ -29,9 +29,16 @@ Full package list exported via `pip freeze` from this environment:
 ```bash
 conda create -n spino-v3 python=3.10
 conda activate spino-v3
-pip install "setuptools<81" wheel
-pip install torch==2.12.1 torchvision==0.27.1 triton==3.7.1 \
-    --index-url https://download.pytorch.org/whl/cu126
+```
+Cuda-gpu:
+```bash
+pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+```
+Cuda-cpu:
+```bash
+pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 -f https://download.pytorch.org/whl/cpu/torch_stable.html
+```
+```bash
 pip install -r requirements-spino-v3.txt --no-build-isolation
 ```
 
