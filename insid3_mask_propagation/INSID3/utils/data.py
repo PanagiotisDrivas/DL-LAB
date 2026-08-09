@@ -20,7 +20,7 @@ def build_transform(image_size: int) -> transforms.Compose:
     """
     return transforms.Compose(
         [
-            transforms.Resize(size=(image_size, image_size)),
+            transforms.Resize(size=(image_size, image_size * 2)), #changed aspect ratio to 2:1
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ]
@@ -83,7 +83,7 @@ def load_mask(
     return (
         F.interpolate(
             mask_tensor.unsqueeze(0).float(),
-            size=(image_size, image_size),
+            size=(image_size, image_size * 2),  #changed aspect ratio to 2:1
             mode="nearest",
         ).squeeze(0)
         > 0.5

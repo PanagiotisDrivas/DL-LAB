@@ -6,19 +6,35 @@ import shutil
 from INSID3.models import build_insid3
 
 from config import *
+import random
 
 from utils.io import load_references
 from utils.infer import generate_class_mask
 from utils.aggregate import combine_masks
 from utils.mask import save_mask
 from utils.mask_to_json import masks_to_json
+from get_heads import dinov3_attention_clustering
+from PIL import Image
 
-
-def run(target_image, model_size, image_dir, max_instances=None, remove_masks=False, reference_mask_type="semantic"):
+def run(target_image, model_size, image_dir, max_instances=None, remove_masks=False, reference_mask_type="semantic", tau=0.6, threshold=0.2, object_dino=False):
 
     # --------------------------------
     # Output directory
     # --------------------------------
+
+
+    if object_dino:
+        img_objdino = Image.open(
+                target_image
+            ).convert("RGB")
+
+        result = dinov3_attention_clustering(img_objdino)
+
+        layers_and_heads = result["selections"]
+        print(layers_and_heads)
+    else:
+        layers_and_heads = []
+    
 
     image_name = Path(target_image).stem
 
@@ -41,7 +57,8 @@ def run(target_image, model_size, image_dir, max_instances=None, remove_masks=Fa
     # Build INSID3 model
     # --------------------------------
 
-    model = build_insid3(model_size=model_size) #CHANGE SOMEE CONFIGGGSSSS HEERRREEEEEE
+    model = build_insid3(model_size=model_size, image_size=1024, tau=tau, merge_threshold=threshold) #CHANGE SOMEE CONFIGGGSSSS HEERRREEEEEE
+
 
     class_masks = {}
 
@@ -54,9 +71,9 @@ def run(target_image, model_size, image_dir, max_instances=None, remove_masks=Fa
         print(f"\nProcessing class: {cls}")
 
         if reference_mask_type=="semantic":
-            references = load_references(REFRENCE_SEMANTIC_BANK_ROOT, cls)
+            references = load_references(REFERENCE_SEMANTIC_BANK_ROOT, cls)
         else:
-            references = load_references(REFRENCE_INSTANCE_BANK_ROOT, cls)
+            references = load_references(REFERENCE_INSTANCE_BANK_ROOT, cls)
 
         # Select number of reference images
         if max_instances is not None:
@@ -99,8 +116,8 @@ def run(target_image, model_size, image_dir, max_instances=None, remove_masks=Fa
     # --------------------------------
     # Generate polygon JSON
     # --------------------------------
-
     json_path = annotation_dir / f"{image_name}.json"
+
 
     masks_to_json(mask_root=output_dir, output_json=json_path)
 
@@ -119,18 +136,21 @@ def run(target_image, model_size, image_dir, max_instances=None, remove_masks=Fa
     print("\nFinished:", image_name)
 
 
-def process_all_images(image_dir, model_size, max_instances, remove_masks, reference_mask_type="semantic"):
+def process_all_images(image_dir, model_size, max_instances, remove_masks, reference_mask_type="semantic", tau=0.6, threshold=0.2, object_dino=False):
 
     image_dir = Path(image_dir)
-
+    
+    annotation_dir = image_dir.parent / "annotations"
+    completed = {p.stem for p in annotation_dir.glob("*.json")}
     images = sorted(
         [
             p
             for p in image_dir.iterdir()
             if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp", ".webp"]
+            and p.stem not in completed
         ]
     )
-
+    random.shuffle(images)
     print(f"Found {len(images)} images")
 
     for image_path in images:
@@ -150,6 +170,9 @@ def process_all_images(image_dir, model_size, max_instances, remove_masks, refer
                 max_instances=max_instances,
                 remove_masks=remove_masks,
                 reference_mask_type=reference_mask_type,
+                tau=tau,
+                threshold=threshold,
+                object_dino=object_dino
             )
 
         except Exception as e:
@@ -166,7 +189,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="INSID3 reference-based segmentation")
 
     parser.add_argument(
-        "--image-dir",
+        "--image_dir",
         type=str,
         default="input/images",
         help="Directory containing input images",
@@ -188,21 +211,42 @@ def parse_args():
         "--type",
         type=str,
         default="semantic",
-        choices=["semantic", "instance"],
+        choices=["semantic"],
         help="type of reference bank",
     )
 
     parser.add_argument(
-        "--max-instances",
+        "--max_instances",
         type=int,
-        default=7,
+        default=5,
         help="Maximum number of reference images per class",
     )
 
     parser.add_argument(
-        "--remove-masks",
+        "--remove_masks",
         action="store_true",
+        default=True,
         help="Remove aggregated mask folders after JSON generation",
+    )
+    parser.add_argument(
+        "--tau",
+        type=float,
+        default=0.7,
+        help="TAU",
+    )
+
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.2,
+        help="threshold",
+    )
+
+    parser.add_argument(
+        "--object_dino",
+        action="store_true",
+        default=False,
+        help="Enable object DINO mode",
     )
 
     return parser.parse_args()
@@ -211,7 +255,6 @@ def parse_args():
 if __name__ == "__main__":
 
     args = parse_args()
-
     # --------------------------------
     # Single image mode
     # --------------------------------
@@ -231,6 +274,9 @@ if __name__ == "__main__":
             max_instances=args.max_instances,
             remove_masks=args.remove_masks,
             reference_mask_type=args.type,
+            tau=args.tau,
+            threshold=args.threshold,
+            object_dino=args.object_dino,
         )
 
     # --------------------------------
@@ -245,4 +291,8 @@ if __name__ == "__main__":
             max_instances=args.max_instances,
             remove_masks=args.remove_masks,
             reference_mask_type=args.type,
+            tau=args.tau,
+            threshold=args.threshold,
+            object_dino=args.object_dino,
         )
+

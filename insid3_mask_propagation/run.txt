@@ -19,3 +19,14 @@ python run_insid3.py --image input/images/test.jpg
 
 # Remove masks else while JSON creation the mask will be used from previous runs
 python infer.py --image input/images/jena_000065_000025_leftImg8bit.png --max-instances 7 --remove-masks --type semantic
+
+check taus in diff images
+python test_clustering.py --image input/images/0.jpeg --model-size base --height 1024 --width 2048 --taus 0.6
+
+Apply
+python infer.py --image input/images/0.jpeg --tau 0.7 --threshold 0.4 --type instance
+
+viz
+python create_mask.py --json-dir input/annotations --output-dir input/masks
+
+python test_clustering_test.py --image input/images/1.png --model-size base --tau 0.2

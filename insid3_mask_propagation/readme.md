@@ -1,428 +1,153 @@
-Here is the final `README.md` updated for your complete pipeline:
+# INSID3
 
-* Generate **instance reference bank**
-* Generate **semantic reference bank**
-* Run INSID3 inference
-* Select reference type (`semantic` / `instance`)
-* Single image or batch inference
-* Generate polygon JSON
-* Generate masks from JSON
-
-```markdown
-# INSID3 Reference-Based Segmentation Pipeline
-
-This project uses **INSID3 reference-based segmentation**.
-
-The pipeline supports two types of reference banks:
-
-1. **Instance Reference Bank**
-2. **Semantic Reference Bank**
-
-The inference pipeline:
-
-```
-
-Reference Bank
-|
-|
-v
-INSID3 inference
-|
-|
-v
-Class masks
-|
-|
-v
-Polygon JSON annotations
-|
-|
-v
-Binary masks
-
-```
+This module performs reference-based semantic segmentation using INSID3 and prepares the generated annotations for use with SPINO.
 
 ---
 
 # Directory Structure
 
-Recommended project structure:
-
 ```
-
-project/
+insid3_mask_propagation/
 
 ├── infer.py
-├── create_instance_reference_bank.py
-├── create_semantic_reference_bank.py
+├── generate_reference_semantic_mask.py
+├── create_insid3_dataset_for_spino.py
 ├── create_mask.py
+├── get_heads.py
+├── config.py
+├── create_label_mask.py
 │
 ├── input/
 │   ├── images/
-│   │   ├── image1.png
-│   │   └── image2.png
-│   │
 │   ├── annotations/
 │   └── masks/
 │
-├── reference_bank/
+├── reference_semantic_bank/
 │
-│   ├── instance/
-│   │
-│   └── semantic/
+├── aggregated_masks/
 │
-└── aggregated_masks/
-
+└── insid3_dataset/
+    ├── gtFine/
+    └── leftImg8bit_sequence/
 ```
 
 ---
 
-# 1. Generate Reference Banks
+# Pipeline Overview
 
-Reference banks are created from Cityscapes polygons.
+The complete pipeline consists of three main steps:
 
-The reference contains:
+1. **Generate Semantic Reference Bank**
+   - Creates reference images and semantic masks for each class.
 
+2. **Run INSID3 Inference**
+   - Uses the semantic reference bank to perform reference-based semantic segmentation.
+   - Generates class-wise segmentation masks and polygon annotations.
+
+3. **Prepare SPINO Dataset**
+   - Converts INSID3 outputs into the required Cityscapes-style format for SPINO training.
+
+---
+
+# Step 1: Semantic Reference Bank
+
+The pipeline uses a **Semantic Reference Bank** containing reference images and their corresponding semantic masks.
+
+Each reference consists of:
+
+- a reference image
+- a semantic mask containing all pixels belonging to a specific semantic class present in that image
+
+The reference bank paths and generation settings are configured in `config.py`.
+
+Before generating the reference bank, update:
+
+```python
+CITYSCAPES_ROOT = Path("<path_to_cityscapes>")
 ```
 
-reference image
+to point to the Cityscapes dataset location.
 
-*
+The generated reference bank is stored according to:
 
-binary mask
-
+```python
+OUTPUT_REFERENCE_SEMANTIC_BANK_ROOT = Path("reference_semantic_bank")
 ```
 
-Example:
+The supported semantic classes are defined in:
 
+```python
+CLASSES = [
+    "road",
+    "sidewalk",
+    "building",
+    ...
+]
 ```
 
-car/
-car_000_img.png
-car_000_mask.png
+Additional generation parameters can be controlled using:
 
+```python
+MAX_PER_CLASS = 11   # Maximum number of references per class
+MIN_AREA = 5000      # Minimum object area
 ```
 
 ---
 
-# 2. Instance Reference Bank
-
-## Description
-
-Each reference contains **one object instance**.
-
-Example:
-
-A Cityscapes image:
-
-```
-
-car
-car
-car
-
-```
-
-creates:
-
-```
-
-car/
-
-car_000_img.png
-car_000_mask.png
-
-car_001_img.png
-car_001_mask.png
-
-car_002_img.png
-car_002_mask.png
-
-````
-
-Each mask contains only one car.
-
----
-
-## Generate Instance Bank
+## Generating the Semantic Reference Bank
 
 Run:
 
 ```bash
-python create_instance_reference_bank.py
-````
+python generate_reference_semantic_mask.py
+```
 
-Output:
+The generated references are stored as:
 
 ```
-reference_bank_instance/
+reference_semantic_bank/
 
 ├── car/
-│
-│── car_000_img.png
-│── car_000_mask.png
+│   ├── car_000_img.png
+│   ├── car_000_mask.png
+│   ├── car_001_img.png
+│   ├── car_001_mask.png
+│   └── ...
 │
 ├── person/
 │
 └── building/
 ```
 
----
+Each class directory contains:
 
-# 3. Semantic Reference Bank
+- `*_img.png` — reference image
+- `*_mask.png` — semantic mask for the corresponding class
 
-## Description
-
-A semantic reference contains **all instances of the same class in one image**.
-
-Example:
-
-Input image:
-
-```
-car
-car
-car
-car
-```
-
-creates:
-
-```
-car_000_img.png
-
-car_000_mask.png
-```
-
-where the mask contains all cars:
-
-```
-      ███
-
-███        ███
-
-
-       ███
-```
+The generated masks contain all pixels belonging to the target semantic class.
 
 ---
 
-## Generate Semantic Bank
+# Step 2: Running INSID3 Inference
 
-Run:
+The script `infer.py` performs the complete INSID3 inference pipeline.
 
-```bash
-python create_semantic_reference_bank.py
-```
+It:
 
-Default:
-
-```python
-min_instances=3
-```
-
-Meaning:
-
-Only images containing at least 3 objects of the same class are selected.
-
-Example:
-
-```
-car: 7 objects  -> saved
-
-person: 2 objects -> ignored
-```
+1. Loads the semantic reference bank.
+2. Performs reference-based semantic matching using INSID3.
+3. Generates class-wise segmentation masks.
+4. Aggregates the masks.
+5. Creates polygon annotations from the final semantic masks.
 
 ---
 
-# 4. Prepare Input Images
+## Input Images
 
-Place images here:
+Place images to be processed in:
 
 ```
 input/images/
-
-image1.png
-image2.png
-image3.png
-```
-
----
-
-# 5. Run INSID3 Inference
-
-## Batch inference
-
-Default:
-
-```bash
-python infer.py
-```
-
-This uses:
-
-```
-model:
-small
-
-
-reference:
-semantic
-
-
-references per class:
-7
-```
-
----
-
-# 6. Select Reference Type
-
-## Semantic reference bank
-
-Recommended for dense scenes:
-
-```bash
-python infer.py \
---type semantic
-```
-
-Uses:
-
-```
-REFRENCE_SEMANTIC_BANK_ROOT
-```
-
----
-
-## Instance reference bank
-
-```bash
-python infer.py \
---type instance
-```
-
-Uses:
-
-```
-REFRENCE_INSTANCE_BANK_ROOT
-```
-
----
-
-# 7. Single Image Inference
-
-Run one image:
-
-```bash
-python infer.py \
---image input/images/test.png
-```
-
-Example:
-
-```bash
-python infer.py \
---image input/images/test.png \
---type semantic
-```
-
----
-
-# 8. Select Number of References
-
-Default:
-
-```
-7 references per class
-```
-
-Change:
-
-```bash
-python infer.py \
---max-instances 3
-```
-
-Example:
-
-```
-car/
-
-car_000
-car_001
-car_002
-```
-
-Only these references are used.
-
----
-
-# 9. Change INSID3 Model
-
-Small:
-
-```bash
-python infer.py \
---model_size small
-```
-
-Base:
-
-```bash
-python infer.py \
---model_size base
-```
-
-Large:
-
-```bash
-python infer.py \
---model_size large
-```
-
----
-
-# 10. Output After Inference
-
-After running:
-
-```
-aggregated_masks/
-```
-
-contains:
-
-```
-aggregated_masks/
-
-└── image1_small/
-
-    ├── car.png
-
-    ├── person.png
-
-    ├── building.png
-
-    └── semantic_mask.png
-```
-
-Each class mask:
-
-```
-255 = predicted class
-
-0 = background
-```
-
----
-
-# 11. Generate Polygon JSON
-
-The inference automatically creates:
-
-```
-input/annotations/
 ```
 
 Example:
@@ -430,190 +155,216 @@ Example:
 ```
 input/
 
+├── images/
+│   ├── image1.png
+│   ├── image2.png
+│   └── image3.png
+│
 ├── annotations/
-
-│   └── image1.json
-```
-
-JSON format:
-
-```json
-{
-    "imgHeight":1024,
-    "imgWidth":2048,
-
-    "objects":[
-        {
-            "label":"car",
-
-            "polygon":[
-                [100,200],
-                [150,250],
-                [200,300]
-            ]
-        }
-    ]
-}
+└── masks/
 ```
 
 ---
 
-# 12. Generate Binary Masks From JSON
+## Batch Inference
 
-Run:
+Process all images inside `input/images/`:
 
 ```bash
-python create_mask.py \
---json-dir input/annotations \
---output-dir input/masks
+python infer.py
 ```
 
-Output:
+or specify another directory:
 
-```
-input/masks/
-
-image1/
-
-    car.png
-
-    person.png
-
-    building.png
+```bash
+python infer.py --image-dir input/images
 ```
 
-Mask:
+Images with an existing JSON annotation in `input/annotations/` are automatically skipped.
 
-```
-white  = object
+---
 
-black  = background
+## Single Image Inference
+
+Run inference on a single image:
+
+```bash
+python infer.py --image input/images/image1.png
 ```
 
 ---
 
-# 13. Remove Intermediate Masks
+# Common Options
 
-Normally:
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--model_size` | `base` | INSID3 model size (`small`, `base`, `large`) |
+| `--max_instances` | `5` | Maximum number of reference images used per class |
+| `--tau` | `0.7` | Clustering Threshold (0.7) Best for Cityscapes |
+| `--threshold` | `0.2` | Mask merge threshold |
+| `--object_dino` | Disabled | Enable DINOv3 attention-based head selection |
+| `--remove_masks` | Disabled | Delete intermediate masks after JSON generation |
+
+---
+
+We also explored on OBJECT-DINO to retrieve object centric head and use the Value matrices for INSID3.
+OBJECT-DINO : https://samyakr99.github.io/Object_dino/
+
+# Example Commands
+
+## Use the large INSID3 model
+
+```bash
+python infer.py --model_size large
+```
+
+## Use more reference images per class
+
+```bash
+python infer.py --max_instances 10
+```
+
+## Adjust similarity and merge thresholds
+
+```bash
+python infer.py --tau 0.7 --threshold 0.3
+```
+
+## Enable ObjectDINO
+
+```bash
+python infer.py --object_dino
+```
+
+## Remove intermediate masks after generating JSON annotations
+
+```bash
+python infer.py --remove_masks
+```
+
+---
+
+# INSID3 Output
+
+For each processed image, intermediate class masks are stored in:
 
 ```
 aggregated_masks/
+
+└── image1_base/
+    ├── building.png
+    ├── car.png
+    ├── person.png
+    ├── ...
+    └── semantic_mask.png
 ```
 
-is kept.
-
-To remove automatically:
-
-```bash
-python infer.py \
---remove-masks
-```
-
-Example:
-
-```bash
-python infer.py \
---image input/images/test.png \
---type semantic \
---remove-masks
-```
-
-After JSON creation:
+The final INSID3 polygon annotations are generated in:
 
 ```
-aggregated_masks/image1_small/
+input/
+
+└── annotations/
+    └── image1.json
 ```
 
-is deleted.
+If `--remove-masks` is enabled, the corresponding directory inside `aggregated_masks/` is deleted after generating the JSON annotation.
 
 ---
 
-# Complete Workflow
+# Step 3: Preparing Dataset for SPINO
 
-## Step 1
+After INSID3 inference, the generated annotations need to be converted into the format required by SPINO.
 
-Create instance bank:
-
-```bash
-python create_instance_reference_bank.py
-```
-
-or semantic bank:
+This is done using:
 
 ```bash
-python create_semantic_reference_bank.py
+python create_insid3_dataset_for_spino.py
 ```
+
+The script performs the following steps:
+
+1. Renames annotation files according to the Cityscapes naming convention.
+2. Generates Cityscapes-compatible semantic and instance masks.
+3. Creates the required SPINO dataset directory structure.
+4. Copies only images with corresponding annotations.
 
 ---
 
-## Step 2
+## Preparing Annotations
 
-Put test images:
+Before conversion, annotations are renamed from:
 
 ```
-input/images/
+<city>_<sequence>_<frame>.json
 ```
+
+to:
+
+```
+<city>_<sequence>_<frame>_gtFine_polygons.json
+```
+
+This matches the Cityscapes annotation format expected by SPINO.
 
 ---
 
-## Step 3
+## SPINO Dataset Structure
 
-Run INSID3:
+The generated dataset is stored as:
+
+```
+insid3_dataset/
+
+├── gtFine/
+│   └── train/
+│       └── <city>/
+│           ├── *_gtFine_polygons.json
+│           ├── *_gtFine_labelIds.png
+│           └── *_gtFine_instanceIds.png
+│
+└── leftImg8bit_sequence/
+    └── train/
+        └── <city>/
+            └── *_leftImg8bit.png
+```
+
+Only images with corresponding INSID3 annotations are copied.
+
+---
+
+# Complete Pipeline
+
+The complete INSID3-to-SPINO pipeline can be executed in the following order:
+
+---
+
+## Step 1: Generate Semantic Reference Bank
 
 ```bash
-python infer.py \
---type semantic
+python generate_reference_semantic_mask.py
 ```
+
+Creates reference images and semantic masks for each semantic class.
 
 ---
 
-## Step 4
-
-Convert annotations to masks:
+## Step 2: Run INSID3 Inference
 
 ```bash
-python create_mask.py \
---json-dir input/annotations \
---output-dir input/masks
+python infer.py
 ```
+
+Generates semantic masks and polygon annotations using INSID3.
 
 ---
 
-# Recommended Settings
+## Step 3: Prepare SPINO Dataset
 
-For normal street scenes:
-
-```
-Reference:
-semantic
-
-
-References/class:
-~3
-
-
-Model:
-base
+```bash
+python create_insid3_dataset_for_spino.py
 ```
 
-For small objects:
+Converts INSID3 outputs into the required SPINO training format.
 
-```
-Reference:
-instance
-
-
-References/class:
-~3
-```
-
-```
-semantic reference bank
-        +
-INSID3
-        +
-polygon extraction
-```
-
-produces final segmentation annotations automatically.
-
+---

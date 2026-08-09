@@ -4,6 +4,7 @@ import torch
 
 from INSID3.models.insid3 import INSID3
 
+
 _HUB_NAMES = {
     "small": "dinov3_vits16",
     "base": "dinov3_vitb16",
@@ -11,29 +12,24 @@ _HUB_NAMES = {
 }
 
 _WEIGHTS = {
-    "small": "../checkpoints/dinov3_vits16.pth",
-    "base": "../checkpoints/dinov3_vitb16.pth",
-    "large": "../checkpoints/dinov3_vitl16.pth",
+    "small": "pretrain/dinov3_vits16_pretrain_lvd1689m-08c60483.pth",
+    "base": "pretrain/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth",
+    "large": "pretrain/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth",
 }
 
+def get_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
-# HEEEEEEEEEEEEEEERRRRRRRRRRRRRRRRRRRREEEEEEEEEEEEEEEEEEEEEEE COMMENT FUNCTION BELOWWW
 def _build_encoder(model_size: str = "large"):
     return torch.hub.load(
-        "C:/Users/ghost/.cache/torch/hub/facebookresearch_dinov3_main",
+        "facebookresearch/dinov3",
         _HUB_NAMES[model_size],
         weights=_WEIGHTS[model_size],
-        source="local",
     )
-
-
-# HEEEEEEEEEEEEEEERRRRRRRRRRRRRRRRRRRREEEEEEEEEEEEEEEEEEEEEEE Then UNCOMMENT FUNCTION BELOWWW
-# def _build_encoder(model_size: str = "large"):
-#     return torch.hub.load(
-#         "facebookresearch/dinov3",
-#         _HUB_NAMES[model_size],
-#         weights=_WEIGHTS[model_size],
-#     )
 
 
 def build_insid3(
@@ -45,6 +41,7 @@ def build_insid3(
     merge_threshold: float = 0.2,
     mask_refiner: str = "bilinear",
     resize_to_orig_size: bool = True,
+    layers_and_heads : list = [],
     device: str = "cuda",
 ):
     encoder = _build_encoder(model_size)
@@ -56,7 +53,8 @@ def build_insid3(
         merge_threshold=merge_threshold,
         mask_refiner=mask_refiner,
         resize_to_orig_size=resize_to_orig_size,
-        device=device,
+        device=get_device(),
+        layers_and_heads=layers_and_heads,
     )
     for param in model.parameters():
         param.requires_grad = False

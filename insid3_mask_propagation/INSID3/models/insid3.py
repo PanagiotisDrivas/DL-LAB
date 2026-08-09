@@ -14,6 +14,88 @@ from INSID3.utils.data import build_transform, downsample_mask, load_image, load
 from INSID3.utils.keypoints import kernel_softargmax_get_matches_logits, rescale_points
 from INSID3.utils.refinement import upsample_mask
 
+# Experments related to OBJECT DINO https://samyakr99.github.io/Object_dino/
+def extract_selected_head_features(
+    model,
+    x,
+    layers_and_heads
+):
+
+    outputs = {}
+    hooks = []
+
+
+    def hook_fn(layer_idx, selected_heads):
+
+        def hook(module, inputs, output):
+
+            tokens = inputs[0]
+
+            B,N,C = tokens.shape
+
+            qkv = module.qkv(tokens)
+
+            q, k, v = qkv.chunk(
+                3,
+                dim=-1
+            )
+
+
+            head_dim = C // model.num_heads
+
+
+            # B,N,C -> B,N,H,D
+            v = v.reshape(
+                B,
+                N,
+                model.num_heads,
+                head_dim
+            )
+
+
+            # select heads
+            v = v[:,:,selected_heads,:]
+
+
+            # merge heads
+            v = v.reshape(
+                B,
+                N,
+                -1
+            )
+
+
+            outputs[layer_idx] = v
+
+
+        return hook
+
+
+    for layer_idx, heads in layers_and_heads:
+
+        handle = (
+            model.blocks[layer_idx]
+            .attn
+            .register_forward_hook(
+                hook_fn(
+                    layer_idx,
+                    heads
+                )
+            )
+        )
+
+        hooks.append(handle)
+
+
+    with torch.no_grad():
+        model(x)
+
+
+    for h in hooks:
+        h.remove()
+
+
+    return outputs
 
 class INSID3(nn.Module):
     """Training-free in-context segmentation using a frozen DINOv3 encoder."""
@@ -28,6 +110,8 @@ class INSID3(nn.Module):
         mask_refiner: str = "bilinear",
         resize_to_orig_size: bool = True,
         device: str = "cuda",
+        layers_and_heads=[],
+
     ):
         super().__init__()
         self.encoder = encoder
@@ -38,8 +122,14 @@ class INSID3(nn.Module):
         self.merge_threshold = merge_threshold
         self.mask_refiner = mask_refiner
         self.resize_to_orig_size = resize_to_orig_size
-
-        self.positional_basis = self._build_positional_basis(self.device)
+        self.layers_and_heads = layers_and_heads
+        self.encoder.to(device)
+        
+        self.positional_basis = self._build_positional_basis(
+            self.device
+        )
+        # self.positional_basis = self._build_positional_basis(self.device)
+        
 
         self._transform = build_transform(image_size)
         self.reset_state()
@@ -255,33 +345,229 @@ class INSID3(nn.Module):
 
     # ──────── Feature extraction ────────
 
-    def _extract_features(self, imgs: torch.Tensor) -> torch.Tensor:
-        B, T = imgs.shape[:2]
-        x = einops.rearrange(imgs, "b t c h w -> (b t) c h w")
-        fmaps = self.encoder.get_intermediate_layers(x, n=1, reshape=True)[0]
-        return einops.rearrange(fmaps, "(b t) c h w -> b t c h w", b=B)
+    def _extract_features(
+    self,
+    imgs: torch.Tensor
+    ) -> torch.Tensor:
 
+        # ----------------------------------------
+        # Allow both:
+        # (B,C,H,W)
+        # (B,T,C,H,W)
+        # ----------------------------------------
+        squeeze_time = False
+
+        if imgs.dim() == 4:
+            imgs = imgs.unsqueeze(1)
+            squeeze_time = True
+
+
+        B, T = imgs.shape[:2]
+
+
+        x = einops.rearrange(
+            imgs,
+            "b t c h w -> (b t) c h w"
+        )
+
+
+        # ----------------------------------------
+        # Standard DINO features
+        # ----------------------------------------
+
+        if len(self.layers_and_heads) == 0:
+
+            fmaps = self.encoder.get_intermediate_layers(
+                x,
+                n=1,
+                reshape=True
+            )[0]
+
+
+        # ----------------------------------------
+        # Selected layer + head features
+        # ----------------------------------------
+
+        else:
+
+            head_features = extract_selected_head_features(
+                self.encoder,
+                x,
+                self.layers_and_heads
+            )
+
+
+            layer_features = []
+
+
+            _, _, H, W = x.shape
+
+            patch_size = self.encoder.patch_size
+
+            grid_h = H // patch_size
+            grid_w = W // patch_size
+
+            num_patches = grid_h * grid_w
+
+
+            for layer_idx in sorted(head_features.keys()):
+
+                tokens = head_features[layer_idx]
+
+
+                # remove CLS/register tokens
+                tokens = tokens[:, -num_patches:, :]
+
+
+                # normalize each descriptor
+                tokens = F.normalize(
+                    tokens,
+                    dim=-1
+                )
+
+
+                layer_features.append(tokens)
+
+
+            #
+            # concatenate selected layers
+            #
+            # (BT,N,C_selected)
+            #
+
+            patches = torch.cat(
+                layer_features,
+                dim=-1
+            )
+
+
+            BT,N,C = patches.shape
+
+
+            assert N == grid_h * grid_w, (
+                f"Expected {grid_h*grid_w} patches, got {N}"
+            )
+
+
+            #
+            # normalize after concatenating layers
+            #
+
+            patches = F.normalize(
+                patches,
+                dim=-1
+            )
+
+
+            fmaps = einops.rearrange(
+                patches,
+                "bt (h w) c -> bt c h w",
+                h=grid_h,
+                w=grid_w
+            )
+
+
+        #
+        # Restore batch/time
+        #
+
+        fmaps = einops.rearrange(
+            fmaps,
+            "(b t) c h w -> b t c h w",
+            b=B,
+            t=T
+        )
+
+
+        if squeeze_time:
+            fmaps = fmaps[:,0]
+
+
+        return fmaps
     # ──────── Positional debiasing ────────
 
+    # @torch.no_grad()
+    # def _build_positional_basis(self, device: str) -> torch.Tensor:
+    #     """Estimate the positional subspace from a noise image via SVD."""
+    #     from torchvision.transforms.functional import normalize
+
+    #     noise_img = normalize(
+    #         torch.zeros(1, 3, self.image_size, self.image_size*2),
+    #         mean=[0.485, 0.456, 0.406],
+    #         std=[0.229, 0.224, 0.225],
+    #     ).to(device)
+    #     noise_fmaps = self.encoder.to(device).get_intermediate_layers(
+    #         noise_img, n=1, reshape=True
+    #     )[0]
+    #     noise_fmaps = F.normalize(noise_fmaps, p=2, dim=1)
+
+    #     E = einops.rearrange(noise_fmaps, "b c h w -> c (b h w)")
+    #     E = E - E.mean(dim=1, keepdim=True)
+    #     U, _, _ = torch.linalg.svd(E, full_matrices=False)
+    #     return U[:, : self.svd_components].contiguous()
+
+
     @torch.no_grad()
-    def _build_positional_basis(self, device: str) -> torch.Tensor:
-        """Estimate the positional subspace from a noise image via SVD."""
+    def _build_positional_basis(self, device):
+
         from torchvision.transforms.functional import normalize
 
-        noise_img = normalize(
-            torch.zeros(1, 3, self.image_size, self.image_size),
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ).to(device)
-        noise_fmaps = self.encoder.to(device).get_intermediate_layers(
-            noise_img, n=1, reshape=True
-        )[0]
-        noise_fmaps = F.normalize(noise_fmaps, p=2, dim=1)
 
-        E = einops.rearrange(noise_fmaps, "b c h w -> c (b h w)")
-        E = E - E.mean(dim=1, keepdim=True)
-        U, _, _ = torch.linalg.svd(E, full_matrices=False)
-        return U[:, : self.svd_components].contiguous()
+        noise_img = torch.zeros(
+            1,
+            3,
+            self.image_size,
+            self.image_size*2,
+            device=device
+        )
+
+
+        noise_img = normalize(
+            noise_img,
+            mean=[0.485,0.456,0.406],
+            std=[0.229,0.224,0.225]
+        )
+
+
+        self.encoder.to(device)
+
+
+        noise_fmaps = self._extract_features(
+            noise_img
+        )
+
+
+        #
+        # now shape:
+        # (1,C,H,W)
+        #
+
+        noise_fmaps = F.normalize(
+            noise_fmaps,
+            p=2,
+            dim=1
+        )
+
+
+        E = einops.rearrange(
+            noise_fmaps,
+            "b c h w -> c (b h w)"
+        )
+
+
+        E = E - E.mean(
+            dim=1,
+            keepdim=True
+        )
+
+
+        U,_,_ = torch.linalg.svd(
+            E,
+            full_matrices=False
+        )
+
+
+        return U[:,:self.svd_components].contiguous()
 
     def _debias_features(self, fmaps_norm: torch.Tensor) -> torch.Tensor:
         """Project features onto the orthogonal complement of the positional subspace."""

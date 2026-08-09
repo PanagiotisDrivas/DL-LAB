@@ -11,22 +11,58 @@ from config import *
 # IO
 # ==========================================================
 
+PALETTE = {
+    "road": "#804080",
+    "sidewalk": "#F423E8",
+    "building": "#464646",
+    "wall": "#66669C",
+    "fence": "#BE9999",
+    "pole": "#999999",
+    "traffic light": "#FAAA1E",
+    "traffic sign": "#DCDC00",
+    "vegetation": "#6B8E23",
+    "terrain": "#98FB98",
+    "sky": "#4682B4",
+    "person": "#DC143C",
+    "rider": "#FF0000",
+    "car": "#00008E",
+    "truck": "#000046",
+    "bus": "#003C64",
+    "train": "#005064",
+    "motorcycle": "#0000E6",
+    "bicycle": "#770B20",
+}
+
+
+def hex_to_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+PALETTE_RGB = {
+    cls: np.array(hex_to_rgb(color), dtype=np.uint8)
+    for cls, color in PALETTE.items()
+}
 
 def create_output_dirs():
     for cls in CLASSES:
-        (OUTPUT_REFRENCE_SEMANTIC_BANK_ROOT / cls).mkdir(parents=True, exist_ok=True)
+        (OUTPUT_REFERENCE_SEMANTIC_BANK_ROOT / cls).mkdir(parents=True, exist_ok=True)
 
 
 def get_json_files(split="train"):
 
     return sorted((CITYSCAPES_ROOT / "gtFine" / split).rglob("*_gtFine_polygons.json"))
 
+def get_color_files(split="train"):
+    return sorted(
+        (CITYSCAPES_ROOT / "gtFine" / split).rglob("*_gtFine_color.png")
+    )
 
-def get_image_path(json_path: Path, split="train"):
+def get_image_path(color_path, split="train"):
 
-    city = json_path.parent.name
+    city = color_path.parent.name
 
-    stem = json_path.stem.replace("_gtFine_polygons", "")
+    stem = color_path.stem.replace("_gtFine_color", "")
 
     return (
         CITYSCAPES_ROOT
@@ -35,6 +71,15 @@ def get_image_path(json_path: Path, split="train"):
         / city
         / f"{stem}_leftImg8bit.png"
     )
+
+def load_color_label(path):
+
+    img = cv2.imread(str(path))
+
+    if img is None:
+        return None
+
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
 def load_annotation(json_path):
@@ -65,9 +110,9 @@ def save_reference(label, image, mask, counters):
 
     idx = counters[label]
 
-    image_file = OUTPUT_REFRENCE_SEMANTIC_BANK_ROOT / label / f"{label}_{idx:03d}_img.png"
+    image_file = OUTPUT_REFERENCE_SEMANTIC_BANK_ROOT / label / f"{label}_{idx:03d}_img.png"
 
-    mask_file = OUTPUT_REFRENCE_SEMANTIC_BANK_ROOT / label / f"{label}_{idx:03d}_mask.png"
+    mask_file = OUTPUT_REFERENCE_SEMANTIC_BANK_ROOT / label / f"{label}_{idx:03d}_mask.png"
 
     cv2.imwrite(str(image_file), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
 
@@ -76,14 +121,9 @@ def save_reference(label, image, mask, counters):
     counters[label] += 1
 
 
-# ==========================================================
-# Processing
-# ==========================================================
+def process_annotation(color_file, counters, split="train"):
 
-
-def process_annotation(json_file, counters, split="train", min_instances=3):
-
-    image_path = get_image_path(json_file, split)
+    image_path = get_image_path(color_file, split)
 
     if not image_path.exists():
         return
@@ -93,53 +133,39 @@ def process_annotation(json_file, counters, split="train", min_instances=3):
     if image is None:
         return
 
-    annotation = load_annotation(json_file)
+    label_img = load_color_label(color_file)
 
-    # ------------------------------------------------------
-    # Group polygons by class
-    # ------------------------------------------------------
+    if label_img is None:
+        return
 
-    class_polygons = defaultdict(list)
+    # Number of references that must satisfy MIN_AREA
+    STRICT_EXAMPLES = 10
 
-    for obj in annotation["objects"]:
+    for label in CLASSES:
 
-        label = obj["label"]
-
-        if label not in CLASS_SET:
-            continue
-
-        polygon = np.asarray(obj["polygon"], dtype=np.int32)
-
-        if len(polygon) < 3:
-            continue
-
-        class_polygons[label].append(polygon)
-
-    h, w = image.shape[:2]
-
-    # ------------------------------------------------------
-    # Create one mask per class
-    # ------------------------------------------------------
-
-    for label, polygons in class_polygons.items():
-
+        # Skip if we've already collected enough references
         if counters[label] >= MAX_PER_CLASS:
             continue
 
-        # Require multiple objects
-        if len(polygons) < min_instances:
+        if label not in PALETTE_RGB:
             continue
 
-        mask = np.zeros((h, w), dtype=np.uint8)
+        color = PALETTE_RGB[label]
 
-        for polygon in polygons:
-
-            cv2.fillPoly(mask, [polygon], 255)
+        # Create binary mask
+        mask = np.all(label_img == color, axis=-1).astype(np.uint8) * 255
 
         area = np.count_nonzero(mask)
 
-        if area < MIN_AREA:
-            continue
+        # For the first STRICT_EXAMPLES references, enforce MIN_AREA.
+        # Afterwards, allow smaller instances.
+        if counters[label] < STRICT_EXAMPLES:
+            if area < MIN_AREA:
+                continue
+        else:
+            # Skip empty masks
+            if area == 0:
+                continue
 
         save_reference(label, image, mask, counters)
 
@@ -155,20 +181,22 @@ def build_reference_bank(split="train", min_instances=3):
 
     counters = {cls: 0 for cls in CLASSES}
 
-    json_files = get_json_files(split)
+    # json_files = get_json_files(split)
 
-    print(f"Found {len(json_files)} annotation files.")
+    color_files = get_color_files(split)
 
-    for idx, json_file in enumerate(json_files, start=1):
+    print(f"Found {len(color_files)} label images.")
 
-        process_annotation(json_file, counters, split, min_instances)
+    for idx, color_file in enumerate(color_files, start=1):
+
+        process_annotation(color_file, counters, split)
 
         if idx % 100 == 0:
-
-            print(f"{idx}/{len(json_files)} processed")
+            print(f"{idx}/{len(color_files)} processed")
 
         if all(counters[c] >= MAX_PER_CLASS for c in CLASSES):
             break
+
 
     print("\nFinished\n")
 
