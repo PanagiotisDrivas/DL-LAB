@@ -1,7 +1,0 @@
-#add checkpounts here for dinov3 as
-
-
-dinov3_vits16.pth
-dinov3_vitb16.pth
-
-folder root : checkpoints/ dinov3_vits16.pth, dinov3_vitb16.pth
