@@ -3,8 +3,9 @@ import re
 import subprocess
 from pathlib import Path
 import shutil
-from utils.merge import rename_to_frame_names
+from utils.merge import merge_json
 from create_mask import process_folder
+from config import CLASSES
 
 parser = argparse.ArgumentParser()
 
@@ -49,51 +50,52 @@ for dataset in datasets:
     print(f"Processing dataset: {dataset_name}")
     print("=" * 60)
 
-    # Build one combined instance mask across every class, instead of one class
-    # at a time, so DINOv3 tracking can run as a single joint multi-class
-    # propagation where every pixel's label is decided by real competition
-    # between all classes at once.
+    for class_name in CLASSES:
 
-    try:
-        subprocess.run([
-            "python",
-            "instance_segmentation/create_instance_pipeline.py",
-            "--input-json",
-            str(dataset / "first_mask"),
-            "--all-classes",
-            "--output-dir",
-            f"output/{dataset_name}/probs/instance_mask/all_output",
-        ], check=True)
-    except Exception:
-        print(f"Skipping {dataset_name}: failed to build combined instance mask")
-        continue
+        print(f"\nProcessing class: {class_name}")
 
-    try:
-        # DINOv3 tracking (single joint run across all classes)
-        subprocess.run([
-            "python",
-            "dinov3_seg_tracking.py",
-            "--dinov3-location", ".",
-            "--model-name", args.model_name,
-            "--frames-dir", str(dataset / "frames"),
-            "--first-mask",
-            f"output/{dataset_name}/probs/instance_mask/all_output/combined_instance_mask.png",
-            "--reference-dir", str(dataset / "first_mask"),
-            "--num-before-frames", args.num_before_frames,
-            "--output-dir",
-            f"output/{dataset_name}/probs/out/{args.model_name}_{args.short_side}/tracking_{args.model_name}_{args.short_side}",
-            "--short-side", args.short_side,
-            "--max-context-length", args.max_context_length,
-            "--topk", args.topk,
-            "--temperature", args.temperature,
-        ], check=True)
-    except Exception:
-        print(f"Skipping {dataset_name}: DINOv3 tracking failed")
-        continue
+        try:
+            # Create instance mask
+            subprocess.run([
+                "python",
+                "instance_segmentation/create_instance_pipeline.py",
+                "--input-json",
+                str(dataset / "first_mask"),
+                "--class-name",
+                class_name,
+                "--output-dir",
+                f"output/{dataset_name}/probs/instance_mask/{class_name}_output",
+            ], check=True)
+        except Exception:
+            pass
 
-    # Rename the joint tracking run's positional {i:06d}.json outputs to real frame names
-    rename_to_frame_names(
-        tracking_json_dir=f"output/{dataset_name}/probs/out/{args.model_name}_{args.short_side}/tracking_{args.model_name}_{args.short_side}/json",
+        try:
+            # DINOv3 tracking
+            subprocess.run([
+                "python",
+                "dinov3_seg_tracking.py",
+                "--dinov3-location", ".",
+                "--model-name", args.model_name,
+                "--frames-dir", str(dataset / "frames"),
+                "--first-mask",
+                f"output/{dataset_name}/probs/instance_mask/{class_name}_output/{class_name}_instance_mask.png",
+                "--reference-dir", str(dataset / "first_mask"),
+                "--num-before-frames", args.num_before_frames,
+                "--output-dir",
+                f"output/{dataset_name}/probs/out/{args.model_name}_{args.short_side}/{class_name}_tracking_{args.model_name}_{args.short_side}",
+                "--short-side", args.short_side,
+                "--max-context-length", args.max_context_length,
+                "--topk", args.topk,
+                "--temperature", args.temperature,
+            ], check=True)
+        except Exception:
+            pass
+
+    # Merge predictions for this dataset
+    merge_json(
+        input_dir=f"output/{dataset_name}/probs/out/{args.model_name}_{args.short_side}/",
+        model_name=args.model_name,
+        short_side=args.short_side,
         frames_dir=str(dataset / "frames"),
         output_dir=str(dataset / "annotations"),
     )

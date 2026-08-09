@@ -137,7 +137,7 @@ dmypy.json
 
 #new gitignores
 cityscapes/
-checkpoints/
+# checkpoints/*
 checkpoints_v3/
 results/
 results_v3/
@@ -154,6 +154,14 @@ SPINO/panoptic_label_generator/models_v3/.dino_v3.py.swp
 SPINO/panoptic_label_generator/test/dinov3/activation_mean_4_2048_dinov3.png
 SPINO/panoptic_label_generator/test/dinov3/aorg_dinov3.png
 SPINO/panoptic_label_generator/test/dinov3/semantic_dinov3.png
-temporal_propagation/input/
+SPINO/metrices/v3*
+
+# temporal_propagation/input/
+# temporal_propagation/temporal_dataset/gtFine/train/*
+temporal_propagation/temporal_dataset_original
+insid3_mask_propagation/
 insid3_mask_propagation/input/
 insid3_mask_propagation/aggregated_masks/
+insid3_mask_propagation/insid3_dataset_ran_on_full_size
+insid3_mask_propagation/insid3_dataset
+insid3_mask_propagation/*

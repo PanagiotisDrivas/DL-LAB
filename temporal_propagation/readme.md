@@ -1,134 +1,107 @@
-Here is the updated README structure reflecting that the `input/` directory is located inside the `temporal_propagation/` folder.
+# Temporal Mask Propagation
 
-The structure, paths, and commands have been updated to ensure accurate relative paths.
-
----
-
-# Temporal Mask Propagation with DINOv3
-
-This repository contains a pipeline to temporally propagate an initial instance mask across video frames using DINOv3 feature tracking.
+This module temporally propagates a single ground-truth instance mask across a sequence of video frames using DINOv3 feature tracking, and writes the results directly into a SPINO-ready Cityscapes-style dataset.
 
 ---
 
-## 1. Project Workflow
+# Directory Structure
 
 ```
-┌──────────────────────────┐     ┌──────────────────────────┐     ┌──────────────────────────┐
-│  Cityscapes Source Data  │ ──> │   Processed Input Data   │ ──> │ DINOv3 Feature Tracking  │
-│  (Frames + gtFine Mask)  │     │ (Inside temporal_prop/)  │     │   (Propagated Masks)     │
-└──────────────────────────┘     └──────────────────────────┘     └──────────────────────────┘
+temporal_propagation/
 
-```
-
-1. **Extract:** Gather consecutive frames and the corresponding ground-truth instance mask (`gtFine`) for the **annotated (GT) frame** of a Cityscapes city sequence — by convention the 20th frame of a 30-frame snippet (19 frames before it, 10 after).
-2. **Structure:** Format the data into the `temporal_propagation/input/` directory. The GT frame's own image is excluded from `frames/` and instead placed in `first_mask/` next to its annotation.
-3. **Propagate:** Run the tracking scripts from within the `temporal_propagation/` directory. All of the GT frame's objects, across every class, are combined into a single instance mask and tracked in **one joint DINOv3 run** — every pixel's label comes from real competition among all classes/instances at once, not from 19 independent per-class trackers merged afterward. The combined mask is propagated **both forward** through the frames after the GT frame and **backward** (walking outward from the frame closest to the GT) through the frames before it, then stitched back into chronological order.
-
----
-
-## 2. Repository Structure
-
-Ensure your workspace is organized as follows:
-
-```text
-repository/
-├── checkpoints/
-│   ├── dinov3_vits16_pretrain.pth
-│   └── dinov3_vitb16_pretrain.pth
+├── infer.py
+├── infer_all.py
+├── dinov3_seg_tracking.py
+├── create_mask.py
+├── config.py
 │
-└── temporal_propagation/
-    ├── infer.py
-    ├── infer_all.py
-    ├── dinov3_seg_tracking.py
-    └── input/                       <-- Input data resides here
-        ├── bochum/
-        │   ├── frames/                  <-- 29 frames: 19 before + 10 after the GT frame (GT frame itself excluded)
-        │   │   ├── 000000.png
-        │   │   ├── 000001.png
-        │   │   └── ...
-        │   └── first_mask/
-        │       ├── annotations.json     <-- GT frame's polygon annotation
-        │       └── <gt_frame>.png       <-- GT frame's own RGB image (needed to extract anchor features)
-        └── frankfurt/
-            ├── frames/
-            └── first_mask/
-                ├── annotations.json
-                └── <gt_frame>.png
+├── instance_segmentation/
+│   ├── class_definitions.py
+│   └── create_instance_pipeline.py
+│
+├── utils/
+│   └── merge.py
+│
+├── input/
+│   ├── aachen/
+│   │   └── first_mask/
+│   │   └── frames/
+│   ├── bremen1/
+│   └── ...
+│
+└── output/
 
+temporal_dataset/  
+├── gtFine/
+└── leftImg8bit_sequence/
 ```
 
 ---
 
-## 3. Prerequisites & Checkpoints
+# Pipeline Overview
 
-Download the required DINOv3 pre-trained weights and place them in the root `checkpoints/` directory. The pipeline expects these exact filenames:
+The complete pipeline consists of three main steps:
 
-* `checkpoints/dinov3_vits16.pth`
-* `checkpoints/dinov3_vitb16.pth`
+1. **Build the Combined Instance Mask**
+   - Rasterizes the GT frame's polygon annotation into a single instance mask spanning every class.
 
----
+2. **Run DINOv3 Feature Tracking**
+   - Propagates the combined mask outward from the GT frame, forward through later frames and backward through earlier frames, in one joint tracking run.
 
-## 4. Input Data Preparation
-
-The pipeline dynamically detects and processes city folders inside `temporal_propagation/input/`. Each city folder must contain:
-
-### Video Frames
-
-Place all consecutive sequence images here, **excluding** the annotated (GT) frame itself. By convention there are 19 frames before the GT frame and 10 after it (`--num-before-frames`, default `19`).
-
-```text
-temporal_propagation/input/<dataset_name>/frames/
-├── 000000.png     <-- 19 frames before the GT frame
-├── ...
-├── 000018.png
-├── 000019.png     <-- 10 frames after the GT frame
-├── ...
-└── 000028.png
-
-```
-
-### Reference Frame Annotation
-
-The GT frame's instance mask (as a JSON file) **and** its own RGB image go in `first_mask/`. The image is required because the pipeline extracts DINOv3 features from it as the anchor for propagation in both directions:
-
-```text
-temporal_propagation/input/<dataset_name>/first_mask/
-├── annotations.json
-└── <gt_frame_name>.png
-
-```
-
-> **Note on Cityscapes Conversion:** To populate these folders, collect sequence frames from `leftImg8bit_sequence/`, set aside the 20th frame (the one matching `gtFine/`) into `first_mask/` along with its converted `annotations.json`, and place the remaining 29 frames in `frames/`.
-
-The GT mask is propagated **forward** through the frames after it and **backward** through the frames before it (walking outward from the frame closest to the GT), then the two results are stitched back into chronological order — matching the original 29-frame ordering in `frames/`.
+3. **Write the SPINO-Ready Annotations**
+   - Renders `labelIds` / `instanceIds` / `color` PNGs for every propagated frame straight into `temporal_dataset/gtFine/<split>/<city>/`.
 
 ---
 
-## 5. Running Temporal Propagation
+# Step 1: The `temporal_dataset` (Provided in google drive)
+
+`temporal_dataset/` is a SPINO-ready Cityscapes-style dataset tree, with `leftImg8bit_sequence/` already populated with the sequence images..
+
+---
+
+# Step 2: Input Data Preparation (Provided in google drive)
+
+The pipeline dynamically detects and processes sequence folders inside `/input/`. Each folder is one sequence (e.g. `bremen1`, `bremen2` for two different sequences of the same city) and must contain:
+
+```
+input/<sequence_name>/
+
+├── frames/ 
+│   ├── <city>_<seq>_000000_leftImg8bit.png
+│   ├── ...
+│   └── <city>_<seq>_000028_leftImg8bit.png
+│
+└── first_mask/
+    ├── <city>_<seq>_<gt_frame>_gtFine_polygons.json  
+    └── <city>_<seq>_<gt_frame>_leftImg8bit.png      
+```
+
+- **`frames/`** — all consecutive sequence images, **excluding** the annotated (GT) frame itself. By convention there are 19 frames before the GT frame and 10 after it (`--num-before-frames`, default `19`).
+- **`first_mask/`** — the GT frame's polygon annotation *and* its own RGB image. The image is required because the pipeline extracts DINOv3 features from it as the anchor for propagation in both directions.
+
+> **Note on multi-sequence cities:** Sequence names with a trailing digit (`bremen1`, `bremen2`, `darmstadt1/2/3`, …) are automatically merged into one shared `<city>/` folder under `temporal_dataset/gtFine/<split>/` — the trailing digit is stripped and does not need to be unique across sequences.
+
+---
+
+# Step 3: Running Temporal Propagation 
 
 Always execute the scripts from within the `temporal_propagation/` directory:
 
 ```bash
 cd temporal_propagation
-
 ```
 
 ### Quick Start
 
-To run with default settings (`dinov3_vitb16`, `topk=5`, context length `11`):
-
 ```bash
-# Run a single city sequence
+# Run a single sequence
 python infer.py --input-dir bochum
 
-# Run all city sequences found in input/
+# Run every sequence found in input/
 python infer_all.py
-
 ```
 
-### Advanced Usage (Single Dataset)
-
-For custom tracking hyper-parameters, pass explicit arguments to `infer.py`:
+### Advanced Usage (Single Sequence)
 
 ```bash
 python infer.py \
@@ -136,30 +109,86 @@ python infer.py \
     --input-dir bochum \
     --topk 5 \
     --max-context-length 11 \
-    --short-side 768
-
+    --short-side 768 \
+    --dataset-root ../temporal_dataset \
+    --split train
 ```
 
-### Configuration Arguments
+### Common Options
 
-| Argument | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--model-name` | `str` | `dinov3_vitb16` | DINOv3 backbone architecture (`dinov3_vits16` or `dinov3_vitb16`). |
-| `--input-dir` | `str` | *Required* | Name of the target dataset directory inside `input/` (e.g., `bochum`). |
-| `--topk` | `int` | `5` | Number of nearest neighbor features used for tracking. |
-| `--max-context-length` | `int` | `11` | Size of the temporal context window (number of reference frames). |
-| `--short-side` | `int` | `768` | Rescales the short side of the input images to this resolution while maintaining aspect ratio. |
-| `--num-before-frames` | `int` | `19` | How many of `frames/`'s frames come chronologically before the GT frame; the rest are propagated forward. |
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--model-name` | `dinov3_vitb16` | DINOv3 backbone (`dinov3_vits16`, `dinov3_vitb16`, `dinov3_vitl16`). |
+| `--input-dir` | *required* | Sequence folder name inside `input/` (`infer.py` only — `infer_all.py` processes every folder). |
+| `--topk` | `5` | Number of nearest-neighbor features used for tracking. |
+| `--max-context-length` | `11` | Size of the temporal context window (number of reference frames). |
+| `--short-side` | `768`/`1024` | Rescales the short side of input images to this resolution, keeping aspect ratio. |
+| `--temperature` | `0.2` | Softmax temperature during propagation — lower is sharper/more decisive, higher blends more smoothly across matched classes. |
+| `--num-before-frames` | `19` | How many of `frames/`'s frames come chronologically before the GT frame; the rest are propagated forward. |
+| `--dataset-root` | `temporal_dataset` | Root of the SPINO-ready dataset tree that `labelIds`/`instanceIds`/`color` PNGs are written into. |
+| `--split` | `train` | Split subfolder under `gtFine/` (e.g. `train`, `val`). |
 
 ---
 
-## 6. Output Structure
+# Example Commands
 
-Once processing completes, tracking outputs are saved under the `temporal_propagation/output/` directory, and finalized merged annotations are copied directly back into your dataset folder:
+## Use the small DINOv3 backbone
 
-```text
-temporal_propagation/input/<dataset_name>/annotations/   # Final merged tracking annotations
-temporal_propagation/output/<dataset_name>/              # Frame-by-frame predicted mask visualizations
-Since frame by frame is not needed we delete it but you can view it by commenting the deletion comment in infer.py and infer_all.py
+```bash
+python infer.py --input-dir bochum --model-name dinov3_vits16
+```
+
+## Widen the temporal context and neighbor search
+
+```bash
+python infer.py --input-dir bochum --max-context-length 15 --topk 8
+```
+
+## Write into the validation split
+
+```bash
+python infer.py --input-dir frankfurt --split val
+```
+
+## Process every sequence in `input/`
+
+```bash
+python infer_all.py --model-name dinov3_vitb16 --short-side 768
+```
+
+---
+
+# Output
+
+For each sequence processed, the pipeline:
+
+1. Writes the joint DINOv3 tracking annotations back into `input/<sequence_name>/annotations/` (one `*_gtFine_polygons.json` per frame).
+2. Renders `*_gtFine_labelIds.png`, `*_gtFine_instanceIds.png`, and `*_gtFine_color.png` for every frame directly into:
 
 ```
+temporal_dataset/
+
+└── gtFine/
+    └── <split>/
+        └── <city>/
+            ├── <city>_<seq>_<frame>_gtFine_labelIds.png
+            ├── <city>_<seq>_<frame>_gtFine_instanceIds.png
+            └── <city>_<seq>_<frame>_gtFine_color.png
+```
+
+3. Deletes the intermediate `output/<sequence_name>/` directory (frame-by-frame tracking visualizations) once the annotations have been written. To inspect these instead of deleting them, comment out the cleanup step at the end of `infer.py` / `infer_all.py`.
+
+---
+
+# Complete Pipeline
+
+```bash
+cd temporal_propagation
+
+# 1. Place temporal_dataset/ and input/ inside  temporal_propagation/, provided in Google Drive.
+
+# 2. Propagate every sequence and write annotations into temporal_dataset/
+python infer_all.py
+```
+
+Each sequence's propagated instance mask lands in `temporal_dataset/gtFine/<split>/<city>/`, ready for SPINO training against the already-provided `temporal_dataset/leftImg8bit_sequence/`.

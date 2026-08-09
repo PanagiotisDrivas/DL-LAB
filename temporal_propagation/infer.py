@@ -2,8 +2,9 @@ import argparse
 import re
 import subprocess
 from pathlib import Path
-from utils.merge import rename_to_frame_names
+from utils.merge import merge_json
 from create_mask import process_folder
+from config import CLASSES
 import shutil
 
 parser = argparse.ArgumentParser()
@@ -31,7 +32,8 @@ parser.add_argument(
 
 parser.add_argument(
     "--short-side",
-    default="1024"
+    # default="1024"
+    default="768"   
 )
 
 parser.add_argument(
@@ -62,66 +64,71 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-# Build one combined instance mask across every class, instead of one class at a
-# time, so DINOv3 tracking can run as a single joint multi-class propagation
-# where every pixel's label is decided by real competition between all classes
-# at once (rather than 19 independent this-class-vs-background trackers pasted
-# together afterward with no cross-class competition). Also ~19x fewer DINOv3
-# forward passes per frame.
+for class_name in CLASSES:
 
-subprocess.run([
-    "python",
-    "instance_segmentation/create_instance_pipeline.py",
-    "--input-json",
-    f"input/{args.input_dir}/first_mask/",
-    "--all-classes",
-    "--output-dir",
-    f"output/{args.input_dir}/probs/instance_mask/all_output"
-])
+    print("==============================")
+    print("Processing:", class_name)
+    print("==============================")
 
 
-# DINOv3 tracking (single joint run across all classes)
+    # Create instance mask
 
-subprocess.run([
-    "python",
-    "dinov3_seg_tracking.py",
+    subprocess.run([
+        "python",
+        "instance_segmentation/create_instance_pipeline.py",
+        "--input-json",
+        f"input/{args.input_dir}/first_mask/",
+        "--class-name",
+        class_name,
+        "--output-dir",
+        f"output/{args.input_dir}/probs/instance_mask/{class_name}_output"
+    ])
 
-    "--dinov3-location",
-    ".",
 
-    "--model-name",
-    args.model_name,
+    # DINOv3 tracking
 
-    "--frames-dir",
-    f"input/{args.input_dir}/frames",
+    subprocess.run([
+        "python",
+        "dinov3_seg_tracking.py",
 
-    "--first-mask",
-    f"output/{args.input_dir}/probs/instance_mask/all_output/combined_instance_mask.png",
+        "--dinov3-location",
+        ".",
 
-    "--reference-dir",
-    f"input/{args.input_dir}/first_mask",
+        "--model-name",
+        args.model_name,
 
-    "--num-before-frames",
-    args.num_before_frames,
+        "--frames-dir",
+        f"input/{args.input_dir}/frames",
 
-    "--output-dir",
-    f"output/{args.input_dir}/probs/out/{args.model_name}_{args.short_side}/tracking_{args.model_name}_{args.short_side}",
+        "--first-mask",
+        f"output/{args.input_dir}/probs/instance_mask/{class_name}_output/{class_name}_instance_mask.png",
 
-    "--short-side",
-    args.short_side,
+        "--reference-dir",
+        f"input/{args.input_dir}/first_mask",
 
-    "--max-context-length",
-    args.max_context_length,
+        "--num-before-frames",
+        args.num_before_frames,
 
-    "--topk",
-    args.topk,
+        "--output-dir",
+        f"output/{args.input_dir}/probs/out/{args.model_name}_{args.short_side}/{class_name}_tracking_{args.model_name}_{args.short_side}",
 
-    "--temperature",
-    args.temperature
-])
+        "--short-side",
+        args.short_side,
 
-rename_to_frame_names(
-    tracking_json_dir=f"output/{args.input_dir}/probs/out/{args.model_name}_{args.short_side}/tracking_{args.model_name}_{args.short_side}/json",
+        "--max-context-length",
+        args.max_context_length,
+
+        "--topk",
+        args.topk,
+
+        "--temperature",
+        args.temperature
+    ])
+
+merge_json(
+    input_dir=f"output/{args.input_dir}/probs/out/{args.model_name}_{args.short_side}/",
+    model_name=args.model_name,
+    short_side=args.short_side,
     frames_dir=f"input/{args.input_dir}/frames",
     output_dir=f"input/{args.input_dir}/annotations/"
 )
