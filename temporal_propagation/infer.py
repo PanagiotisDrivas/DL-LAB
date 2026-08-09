@@ -3,7 +3,7 @@ import re
 import subprocess
 from pathlib import Path
 from utils.merge import merge_json
-from create_mask import process_folder
+from create_mask import process_folder, copy_first_mask_ground_truth
 from config import CLASSES
 import shutil
 
@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument(
     "--model-name",
-    default="dinov3_vitb16"
+    default="dinov3_vits16"
 )
 
 parser.add_argument(
@@ -139,9 +139,15 @@ merge_json(
 # digit so they all land in one shared <city>/ folder, matching SPINO's layout,
 # instead of each creating its own separate (and never-checked) output folder.
 city_name = re.sub(r"\d+$", "", args.input_dir)
+gt_fine_dir = Path(args.dataset_root) / "gtFine" / args.split / city_name
 process_folder(
     json_dir=f"input/{args.input_dir}/annotations",
-    output_dir=str(Path(args.dataset_root) / "gtFine" / args.split / city_name),
+    output_dir=str(gt_fine_dir),
+)
+
+copy_first_mask_ground_truth(
+    first_mask_dir=f"input/{args.input_dir}/first_mask",
+    output_dir=str(gt_fine_dir),
 )
 
 ### Delete intermediate_results
