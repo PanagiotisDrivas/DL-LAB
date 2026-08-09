@@ -106,7 +106,7 @@ python boundary_fine_tuning.py fit --trainer.devices [0] --config configs/bounda
 # 3. Run inference with both trained heads + cluster into final panoptic output
 python instance_clustering.py test --trainer.devices [0] --config configs/instance_cityscapes_v3.yaml > logs/instance_cityscapes_v3.txt 2>&1
 ```
-Note: Please remove "-v1" from the naming of boundary/sematic head if present.
+Note: Please remove "-v1" from the naming of boundary/semantic head if present.
 
 ---
 
