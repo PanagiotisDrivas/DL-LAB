@@ -17,6 +17,8 @@ tie everything together: environment setup, how to actually run SPINO against
 whichever dataset you generated, and the config knobs that need to be kept in sync
 with the data.
 
+**Google Drive Link:** https://drive.google.com/drive/folders/10qLODhPJGSdjJ1tsaXXbV8OGSUMXK0X3?usp=drive_link
+
 ---
 
 ## 1. Environment
