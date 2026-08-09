@@ -29,27 +29,27 @@ Full package list exported via `pip freeze` from this environment:
 ```bash
 conda create -n spino-v3 python=3.10
 conda activate spino-v3
-pip install -r requirements-spino-v3.txt --no-build-isolation
+pip install -r requirements-spino-v3.txt
 ```
-Cuda-gpu:
+
+This repo has a git submodule
+([`facebookresearch/dinov3`](https://github.com/facebookresearch/dinov3), `FINO` branch,
+checked out at `SPINO/panoptic_label_generator/dinov3_dict`) that the DINOv3 backbone
+code in [`dino_v3.py`](SPINO/panoptic_label_generator/models_v3/dino_v3.py) imports from.
+Clone with `--recurse-submodules`, or if you already cloned without it:
+
 ```bash
-pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
+git submodule update --init --recursive
 ```
-OR Cuda-cpu:
-```bash
-pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-```
-Compile deformable attention
-```bash
-cd SPINO/panoptic_segmentation_model/external/ms_deformable_attention
-sh make.sh
-```
+
+Otherwise `dinov3_dict/` shows up as an empty directory and the DINOv3 imports fail.
 
 ---
 
 ## 2. Checkpoints (on Google Drive)
 
-DINO backbone weights should be put in [`checkpoints/`](checkpoints/), can be downloaded:
+DINO backbone weights live in [`checkpoints/`](checkpoints/), referenced
+by the temporal/insid3 pipelines via `../checkpoints/<model_name>.pth`:
 
 ```
 checkpoints/
@@ -59,7 +59,7 @@ checkpoints/
 
 
 SPINO's own fine-tuned checkpoints (semantic/boundary heads) live under
-`SPINO/panoptic_label_generator/checkpoints_v3/`.
+`SPINO/panoptic_label_generator/checkpoints/` (v2) and `checkpoints_v3/` (v3).
 
 ---
 
@@ -106,7 +106,6 @@ python boundary_fine_tuning.py fit --trainer.devices [0] --config configs/bounda
 # 3. Run inference with both trained heads + cluster into final panoptic output
 python instance_clustering.py test --trainer.devices [0] --config configs/instance_cityscapes_v3.yaml > logs/instance_cityscapes_v3.txt 2>&1
 ```
-Note: Please remove "-v1" from the naming of boundary/semantic head if present.
 
 ---
 
