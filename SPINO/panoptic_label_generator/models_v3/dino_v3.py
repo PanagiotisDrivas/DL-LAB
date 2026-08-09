@@ -80,8 +80,11 @@
 
 import sys
 import torch
+from pathlib import Path
 
-DINOV3_REPO_DIR = "/home/pandri2013/DL-LAB/SPINO/panoptic_label_generator/dinov3_dict"
+_THIS_DIR = Path(__file__).resolve().parent
+
+DINOV3_REPO_DIR = str(_THIS_DIR.parent / "dinov3_dict")
 if DINOV3_REPO_DIR not in sys.path:
     sys.path.insert(0, DINOV3_REPO_DIR)
 
@@ -92,11 +95,13 @@ from dinov3.hub.backbones import (
     dinov3_vit7b16 as _dinov3_vit7b16,
 )
 
+CHECKPOINTS_DIR = _THIS_DIR.parent.parent.parent / "checkpoints"
+
 DINOV3_WEIGHTS = {
-    "vits16": "/home/pandri2013/DL-LAB/SPINO/panoptic_label_generator/dinov3_dict/dinov3_vits16_pretrain.pth",
-    "vitb16": "/home/pandri2013/DL-LAB/SPINO/panoptic_label_generator/dinov3_dict/dinov3_vitb16_pretrain.pth",
-    "vitl16": "/home/pandri2013/DL-LAB/SPINO/panoptic_label_generator/dinov3_dict/dinov3_vitl16_pretrain.pth",
-    "vit7b16": "/home/pandri2013/DL-LAB/SPINO/panoptic_label_generator/dinov3_dict/dinov3_vit7b16_pretrain.pth",
+    "vits16": str(CHECKPOINTS_DIR / "dinov3_vits16.pth"),
+    "vitb16": str(CHECKPOINTS_DIR / "dinov3_vitb16.pth"),
+    "vitl16": str(CHECKPOINTS_DIR / "dinov3_vitl16.pth"),
+    "vit7b16": str(CHECKPOINTS_DIR / "dinov3_vit7b16.pth"),
 }
 
 
