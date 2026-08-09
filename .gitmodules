@@ -1,0 +1,4 @@
+[submodule "SPINO/panoptic_label_generator/dinov3_dict"]
+	path = SPINO/panoptic_label_generator/dinov3_dict
+	url = https://github.com/facebookresearch/dinov3.git
+	branch = FINO
