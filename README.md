@@ -29,7 +29,8 @@ Full package list exported via `pip freeze` from this environment:
 ```bash
 conda create -n spino-v3 python=3.10
 conda activate spino-v3
-pip install -r requirements-spino-v3.txt
+pip install "setuptools<81" wheel
+pip install -r requirements-spino-v3.txt --no-build-isolation
 ```
 
 ---
