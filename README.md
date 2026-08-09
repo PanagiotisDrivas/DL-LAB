@@ -39,8 +39,7 @@ pip install -r requirements-spino-v3.txt --no-build-isolation
 
 ## 2. Checkpoints (on Google Drive)
 
-DINO backbone weights live in [`checkpoints/`](checkpoints/), referenced
-by the temporal/insid3 pipelines via `../checkpoints/<model_name>.pth`:
+DINO backbone weights should be put in [`checkpoints/`](checkpoints/), can be downloaded:
 
 ```
 checkpoints/
