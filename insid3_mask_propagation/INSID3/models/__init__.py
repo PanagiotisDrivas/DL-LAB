@@ -12,9 +12,9 @@ _HUB_NAMES = {
 }
 
 _WEIGHTS = {
-    "small": "pretrain/dinov3_vits16_pretrain_lvd1689m-08c60483.pth",
-    "base": "pretrain/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth",
-    "large": "pretrain/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth",
+    "small": "../checkpoints/dinov3_vits16.pth",
+    "base": "../checkpoints/dinov3_vitb16.pth",
+    "large": "../checkpoints/dinov3_vitl16.pth",
 }
 
 def get_device() -> str:
