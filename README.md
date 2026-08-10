@@ -11,6 +11,8 @@ feature-similarity tracking.
 images via reference-based semantic matching (INSID3) against a bank of labeled
 example crops, no temporal video sequence required.
 
+![Project Screenshot](assets/main_diagram.png)
+
 Each has its own README with full usage details; this document covers the parts that
 tie everything together: environment setup, how to actually run SPINO against
 whichever dataset you generated, and the config knobs that need to be kept in sync
